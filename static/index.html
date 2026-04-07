@@ -3,69 +3,112 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OCR AI - Image Text Extraction</title>
+    <title>OCR AI - Finance Document Extractor</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🔍 OCR AI</h1>
-            <p class="subtitle">Extract text from images using AI-powered Optical Character Recognition</p>
+            <h1>🔍 OCR Finance</h1>
+            <p class="subtitle">Auto-detect & extract: Invoices, Receipts, Payment Slips, Tax Invoices, Reimbursements</p>
         </header>
 
         <main>
             <div class="upload-section">
                 <div class="upload-area" id="uploadArea">
                     <div class="upload-icon">📤</div>
-                    <p class="upload-text">Drag & drop an image here, or click to select</p>
-                    <p class="upload-hint">Supported formats: PNG, JPG, JPEG, BMP, TIFF, WebP</p>
-                    <input type="file" id="fileInput" accept="image/*" hidden>
+                    <p class="upload-text">Drop image or PDF here, or click to upload</p>
+                    <p class="upload-hint">Supports: PNG, JPG, JPEG, BMP, TIFF, WebP, PDF</p>
+                    <input type="file" id="fileInput" accept="image/*,.pdf" hidden>
                 </div>
 
-                <div class="options">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="preprocessCheck" checked>
-                        <span>Apply image preprocessing for better accuracy</span>
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="detailedCheck">
-                        <span>Show detailed results (confidence, word-level data)</span>
-                    </label>
-                </div>
-
-                <button id="extractBtn" class="btn-primary" disabled>Extract Text</button>
+                <button id="extractBtn" class="btn-primary" disabled>Extract Data</button>
             </div>
 
+            <!-- Preview with highlighting -->
             <div class="preview-section" id="previewSection" style="display: none;">
-                <h2>Image Preview</h2>
-                <div class="preview-container">
-                    <img id="imagePreview" src="" alt="Preview">
+                <div class="preview-header">
+                    <h2>Document Preview</h2>
+                    <div>
+                        <span id="pdfName" class="pdf-filename" style="display: none;"></span>
+                        <div id="docTypeBadge" class="doc-badge" style="display: none;"></div>
+                    </div>
                 </div>
+                
+                <div class="preview-container" id="previewContainer">
+                    <!-- Image/PDF preview with bounding boxes -->
+                    <div class="preview-wrapper" id="previewWrapper">
+                        <img id="imagePreview" src="" alt="Preview" style="display: none;">
+                        <!-- Bounding boxes overlay (shows all OCR boxes immediately) -->
+                        <div id="boundingBoxes" class="bounding-boxes"></div>
+                    </div>
+                    
+                    <!-- Loading state for PDF -->
+                    <div id="pdfLoading" class="pdf-loading" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Generating PDF preview...</p>
+                    </div>
+                </div>
+                
+                <p class="preview-hint">💡 Click on any word below to highlight it on the preview</p>
             </div>
 
+            <!-- Processing status -->
+            <div class="loading" id="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p id="loadingText">Processing...</p>
+            </div>
+
+            <!-- Results section -->
             <div class="results-section" id="resultsSection" style="display: none;">
-                <h2>Extracted Text</h2>
-                
                 <div class="results-header">
-                    <div class="stats" id="stats"></div>
+                    <h2>Extracted Data</h2>
                     <div class="actions">
+                        <span id="processingTime" class="processing-time"></span>
                         <button id="copyBtn" class="btn-secondary">📋 Copy</button>
-                        <button id="downloadTxtBtn" class="btn-secondary">💾 Download TXT</button>
-                        <button id="downloadJsonBtn" class="btn-secondary">📄 Download JSON</button>
+                        <button id="downloadJsonBtn" class="btn-secondary">💾 JSON</button>
                     </div>
                 </div>
 
-                <div class="results-content">
-                    <div id="simpleResult" class="text-result"></div>
-                    <div id="detailedResult" class="detailed-result" style="display: none;"></div>
+                <!-- Validation warnings -->
+                <div id="validationErrors" class="validation-errors" style="display: none;"></div>
+
+                <!-- Finance data grid -->
+                <div id="financeDataGrid" class="finance-data-grid"></div>
+
+                <!-- Text display modes -->
+                <div class="text-display-section">
+                    <div class="display-tabs">
+                        <button class="tab-btn active" data-tab="blocks" onclick="switchTab('blocks')">
+                            📦 Blocks
+                        </button>
+                        <button class="tab-btn" data-tab="markdown" onclick="switchTab('markdown')">
+                            📝 Markdown
+                        </button>
+                        <button class="tab-btn" data-tab="fulltext" onclick="switchTab('fulltext')">
+                            📄 Full Text
+                        </button>
+                    </div>
+
+                    <!-- Blocks view (clickable words) -->
+                    <div id="blocksView" class="tab-content active">
+                        <p class="view-hint">💡 Click any word to highlight it on the preview</p>
+                        <div id="blocksContainer" class="blocks-container"></div>
+                    </div>
+
+                    <!-- Markdown view -->
+                    <div id="markdownView" class="tab-content">
+                        <div id="markdownContent" class="markdown-content"></div>
+                    </div>
+
+                    <!-- Full text view -->
+                    <div id="fullTextView" class="tab-content">
+                        <div id="fullTextContent" class="full-text-content"></div>
+                    </div>
                 </div>
             </div>
 
-            <div class="loading" id="loading" style="display: none;">
-                <div class="spinner"></div>
-                <p>Processing image...</p>
-            </div>
-
+            <!-- Error message -->
             <div class="error" id="error" style="display: none;">
                 <p id="errorMessage"></p>
                 <button id="closeError" class="btn-secondary">Close</button>
@@ -73,7 +116,7 @@
         </main>
 
         <footer>
-            <p>Powered by Tesseract OCR & FastAPI</p>
+            <p>PaddleOCR • FastAPI • Finance Document Extraction</p>
         </footer>
     </div>
 
