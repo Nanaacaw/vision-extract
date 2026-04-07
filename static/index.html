@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR AI - Image Text Extraction</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 OCR AI</h1>
+            <p class="subtitle">Extract text from images using AI-powered Optical Character Recognition</p>
+        </header>
+
+        <main>
+            <div class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📤</div>
+                    <p class="upload-text">Drag & drop an image here, or click to select</p>
+                    <p class="upload-hint">Supported formats: PNG, JPG, JPEG, BMP, TIFF, WebP</p>
+                    <input type="file" id="fileInput" accept="image/*" hidden>
+                </div>
+
+                <div class="options">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="preprocessCheck" checked>
+                        <span>Apply image preprocessing for better accuracy</span>
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="detailedCheck">
+                        <span>Show detailed results (confidence, word-level data)</span>
+                    </label>
+                </div>
+
+                <button id="extractBtn" class="btn-primary" disabled>Extract Text</button>
+            </div>
+
+            <div class="preview-section" id="previewSection" style="display: none;">
+                <h2>Image Preview</h2>
+                <div class="preview-container">
+                    <img id="imagePreview" src="" alt="Preview">
+                </div>
+            </div>
+
+            <div class="results-section" id="resultsSection" style="display: none;">
+                <h2>Extracted Text</h2>
+                
+                <div class="results-header">
+                    <div class="stats" id="stats"></div>
+                    <div class="actions">
+                        <button id="copyBtn" class="btn-secondary">📋 Copy</button>
+                        <button id="downloadTxtBtn" class="btn-secondary">💾 Download TXT</button>
+                        <button id="downloadJsonBtn" class="btn-secondary">📄 Download JSON</button>
+                    </div>
+                </div>
+
+                <div class="results-content">
+                    <div id="simpleResult" class="text-result"></div>
+                    <div id="detailedResult" class="detailed-result" style="display: none;"></div>
+                </div>
+            </div>
+
+            <div class="loading" id="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Processing image...</p>
+            </div>
+
+            <div class="error" id="error" style="display: none;">
+                <p id="errorMessage"></p>
+                <button id="closeError" class="btn-secondary">Close</button>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by Tesseract OCR & FastAPI</p>
+        </footer>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
