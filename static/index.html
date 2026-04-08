@@ -14,6 +14,7 @@
         </header>
 
         <main>
+            <!-- Upload Section -->
             <div class="upload-section">
                 <div class="upload-area" id="uploadArea">
                     <div class="upload-icon">📤</div>
@@ -21,97 +22,78 @@
                     <p class="upload-hint">Supports: PNG, JPG, JPEG, BMP, TIFF, WebP, PDF</p>
                     <input type="file" id="fileInput" accept="image/*,.pdf" hidden>
                 </div>
-
                 <button id="extractBtn" class="btn-primary" disabled>Extract Data</button>
             </div>
 
-            <!-- Preview with highlighting -->
-            <div class="preview-section" id="previewSection" style="display: none;">
-                <div class="preview-header">
-                    <h2>Document Preview</h2>
-                    <div>
-                        <span id="pdfName" class="pdf-filename" style="display: none;"></span>
-                        <div id="docTypeBadge" class="doc-badge" style="display: none;"></div>
-                    </div>
-                </div>
-                
-                <div class="preview-container" id="previewContainer">
-                    <!-- Image/PDF preview with bounding boxes -->
-                    <div class="preview-wrapper" id="previewWrapper">
-                        <img id="imagePreview" src="" alt="Preview" style="display: none;">
-                        <!-- Bounding boxes overlay (shows all OCR boxes immediately) -->
-                        <div id="boundingBoxes" class="bounding-boxes"></div>
-                    </div>
-                    
-                    <!-- Loading state for PDF -->
-                    <div id="pdfLoading" class="pdf-loading" style="display: none;">
-                        <div class="spinner"></div>
-                        <p>Generating PDF preview...</p>
-                    </div>
-                </div>
-                
-                <p class="preview-hint">💡 Click on any word below to highlight it on the preview</p>
-            </div>
-
-            <!-- Processing status -->
+            <!-- Loading -->
             <div class="loading" id="loading" style="display: none;">
                 <div class="spinner"></div>
                 <p id="loadingText">Processing...</p>
             </div>
 
-            <!-- Results section -->
-            <div class="results-section" id="resultsSection" style="display: none;">
-                <div class="results-header">
-                    <h2>Extracted Data</h2>
-                    <div class="actions">
-                        <span id="processingTime" class="processing-time"></span>
-                        <button id="copyBtn" class="btn-secondary">📋 Copy</button>
-                        <button id="downloadJsonBtn" class="btn-secondary">💾 JSON</button>
+            <!-- Main Content: LEFT (Preview) + RIGHT (Blocks/Markdown/Text/JSON) -->
+            <div class="main-layout" id="mainLayout" style="display: none;">
+                
+                <!-- LEFT COLUMN: Document Preview -->
+                <div class="left-column">
+                    <div class="preview-header">
+                        <h2>Document Preview</h2>
+                        <div>
+                            <span id="pdfName" class="pdf-filename" style="display: none;"></span>
+                            <div id="docTypeBadge" class="doc-badge" style="display: none;"></div>
+                        </div>
                     </div>
+                    
+                    <div class="preview-container">
+                        <div class="preview-wrapper" id="previewWrapper">
+                            <img id="imagePreview" src="" alt="Preview" style="display: none;">
+                            <div id="boundingBoxes" class="bounding-boxes"></div>
+                        </div>
+                        <div id="pdfLoading" class="pdf-loading" style="display: none;">
+                            <div class="spinner"></div>
+                            <p>Generating PDF preview...</p>
+                        </div>
+                    </div>
+                    <p class="preview-hint">💡 Click any block to highlight</p>
                 </div>
 
-                <!-- Validation warnings -->
-                <div id="validationErrors" class="validation-errors" style="display: none;"></div>
-
-                <!-- Finance data grid -->
-                <div id="financeDataGrid" class="finance-data-grid"></div>
-
-                <!-- Text display modes -->
-                <div class="text-display-section">
-                    <div class="display-tabs">
-                        <button class="tab-btn active" data-tab="blocks" onclick="switchTab('blocks')">
-                            📦 Blocks
-                        </button>
-                        <button class="tab-btn" data-tab="markdown" onclick="switchTab('markdown')">
-                            📝 Markdown
-                        </button>
-                        <button class="tab-btn" data-tab="fulltext" onclick="switchTab('fulltext')">
-                            📄 Full Text
-                        </button>
+                <!-- RIGHT COLUMN: Blocks / Markdown / JSON / Full Text -->
+                <div class="right-column">
+                    <!-- View Tabs -->
+                    <div class="view-tabs">
+                        <button class="tab-btn active" data-view="blocks" onclick="switchView('blocks')">📦 Blocks</button>
+                        <button class="tab-btn" data-view="markdown" onclick="switchView('markdown')">📝 Markdown</button>
+                        <button class="tab-btn" data-view="fulltext" onclick="switchView('fulltext')">📄 Full Text</button>
+                        <button class="tab-btn" data-view="json" onclick="switchView('json')">🔧 JSON</button>
+                        <span id="processingTime" class="processing-time"></span>
                     </div>
 
-                    <!-- Blocks view (clickable words) -->
-                    <div id="blocksView" class="tab-content active">
-                        <p class="view-hint">💡 Click any word to highlight it on the preview</p>
-                        <div id="blocksContainer" class="blocks-container"></div>
+                    <!-- Blocks View -->
+                    <div id="blocksView" class="view-content active">
+                        <div id="blocksList" class="blocks-list"></div>
                     </div>
 
-                    <!-- Markdown view -->
-                    <div id="markdownView" class="tab-content">
+                    <!-- Markdown View -->
+                    <div id="markdownView" class="view-content">
                         <div id="markdownContent" class="markdown-content"></div>
                     </div>
 
-                    <!-- Full text view -->
-                    <div id="fullTextView" class="tab-content">
+                    <!-- Full Text View -->
+                    <div id="fullTextView" class="view-content">
                         <div id="fullTextContent" class="full-text-content"></div>
+                    </div>
+
+                    <!-- JSON View -->
+                    <div id="jsonView" class="view-content">
+                        <pre id="jsonContent" class="json-content"></pre>
                     </div>
                 </div>
             </div>
 
-            <!-- Error message -->
+            <!-- Error -->
             <div class="error" id="error" style="display: none;">
                 <p id="errorMessage"></p>
-                <button id="closeError" class="btn-secondary">Close</button>
+                <button id="closeError">Close</button>
             </div>
         </main>
 

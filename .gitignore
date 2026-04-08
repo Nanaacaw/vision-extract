@@ -20,12 +20,16 @@ build/
 *.swo
 *~
 
+input/
+.qwen/
+
 # OS
 .DS_Store
 Thumbs.db
 
 # Test
 test_images/
+input/
 *.log
 
 # Environment variables

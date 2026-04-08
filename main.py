@@ -2,7 +2,7 @@
 OCR AI - Main Application Entry Point
 
 A web-based OCR application using FastAPI and PaddleOCR.
-Supports images, PDFs, and smart data extraction.
+Supports images, PDFs, and finance document extraction.
 """
 
 from fastapi import FastAPI
@@ -11,8 +11,8 @@ from fastapi.responses import FileResponse
 from api.routes import router
 
 app = FastAPI(
-    title="OCR AI",
-    description="AI-powered Optical Character Recognition application with PaddleOCR",
+    title="OCR AI - Finance",
+    description="AI-powered finance document OCR with PaddleOCR",
     version="2.0.0"
 )
 
@@ -33,14 +33,14 @@ if __name__ == "__main__":
     import uvicorn
 
     print("=" * 60)
-    print("🚀 Starting OCR AI Application")
+    print("🚀 Starting OCR AI - Finance Edition")
     print("=" * 60)
     print("📍 Server: http://localhost:8000")
     print("📖 API Docs: http://localhost:8000/docs")
     print("=" * 60)
     print("\n✨ Using PaddleOCR Engine")
-    print("📄 Supports: Images (PNG, JPG, etc.) + PDF files")
-    print("🎯 Features: Smart data extraction, Logo detection")
+    print("📄 Supports: Images + PDF files")
+    print("🎯 Features: Finance auto-detection, Bounding boxes")
     print("=" * 60)
 
     uvicorn.run(

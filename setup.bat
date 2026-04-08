@@ -1,8 +1,8 @@
 @echo off
-REM OCR AI Setup Script for Windows
+REM OCR AI - Finance Edition Setup Script for Windows
 
 echo ========================================
-echo OCR AI - Setup Script
+echo OCR AI - Finance Edition - Setup
 echo ========================================
 echo.
 
@@ -15,29 +15,11 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [1/4] Python found!
-echo.
-
-REM Check if Tesseract is installed
-tesseract --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [WARNING] Tesseract OCR is not found in PATH.
-    echo.
-    echo Please install Tesseract OCR:
-    echo 1. Download from: https://github.com/UB-Mannheim/tesseract/wiki
-    echo 2. Run the installer
-    echo 3. Add Tesseract to your PATH environment variable
-    echo    (Default location: C:\Program Files\Tesseract-OCR)
-    echo.
-    set /p CONTINUE="Continue anyway? (y/n): "
-    if /i not "%CONTINUE%"=="y" exit /b 1
-) else (
-    echo [2/4] Tesseract OCR found!
-)
+echo [1/3] Python found!
 echo.
 
 REM Create virtual environment
-echo [3/4] Creating virtual environment...
+echo [2/3] Creating virtual environment...
 python -m venv venv
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to create virtual environment.
@@ -49,7 +31,7 @@ REM Activate virtual environment
 call venv\Scripts\activate.bat
 
 REM Install dependencies
-echo [4/4] Installing Python dependencies...
+echo [3/3] Installing Python dependencies...
 pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to install dependencies.
@@ -66,5 +48,11 @@ echo To start the application:
 echo   1. Activate virtual environment: venv\Scripts\activate
 echo   2. Run: python main.py
 echo   3. Open: http://localhost:8000
+echo.
+echo Features:
+echo   - Auto-detect finance documents
+echo   - PDF and image support
+echo   - Interactive bounding boxes
+echo   - Clean markdown formatting
 echo.
 pause
