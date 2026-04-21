@@ -27,7 +27,7 @@ Default URLs:
 
 ```text
 Backend:  http://localhost:8001
-Frontend: http://localhost:3000
+Frontend: http://localhost:3001
 ```
 
 API docs:
@@ -42,7 +42,7 @@ http://localhost:8001/docs
 make install   # Install Python dependencies
 make frontend-install
 make backend   # Start FastAPI backend on localhost:8001
-make frontend  # Start Next.js frontend on localhost:3000
+make frontend  # Start Next.js frontend on localhost:3001
 make dev       # Start backend in a separate terminal window
 make check     # Compile-check backend modules
 make clean     # Remove runtime logs
@@ -130,6 +130,7 @@ setup.bat
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [API Reference](docs/api-reference.md)
 - [Flow System](docs/flow-system.md)
 - [OCR Models And Extractors](docs/ocr-models-and-extractors.md)
 
@@ -147,12 +148,13 @@ The browser calls Next.js API routes under `frontend/app/api/*`. Those routes pr
 ```bat
 cd frontend
 set OCR_BACKEND_URL=http://localhost:8001
-npm run dev
+npm run dev -- --port 3001
 ```
 
 ## Notes
 
 - `OCR_BACKEND_PORT` can override the default port.
+- `OCR_FRONTEND_PORT` can override the frontend port used by the Windows scripts. Local `.env` currently uses `3001`.
 - `OCR_BACKEND_URL` can override the backend URL used by the Next.js proxy.
 - `OCR_DET_MODEL` can override the text detection model. Default is `PP-OCRv5_mobile_det`.
 - `OCR_REC_MODEL` can override the text recognition model. Default is `PP-OCRv5_mobile_rec`.
@@ -166,6 +168,7 @@ npm run dev
 
 ```bat
 set OCR_BACKEND_PORT=8002
+set OCR_FRONTEND_PORT=3001
 set OCR_DET_MODEL=PP-OCRv5_mobile_det
 set OCR_REC_MODEL=PP-OCRv5_mobile_rec
 python main.py

@@ -1,5 +1,5 @@
 BACKEND_PORT ?= 8001
-FRONTEND_PORT ?= 3000
+FRONTEND_PORT ?= 3001
 PYTHON ?= .\venv\Scripts\python.exe
 
 .PHONY: help install frontend-install backend frontend dev check clean

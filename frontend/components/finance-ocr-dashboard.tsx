@@ -5,6 +5,7 @@ import {
   AlertCircle,
   CheckCircle2,
   FileText,
+  ImageIcon,
   Loader2,
   LockKeyhole,
   RotateCcw,
@@ -20,10 +21,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs } from "@/components/ui/tabs";
-import type { HealthResponse, OcrResponse } from "@/types/ocr";
 import { cn } from "@/lib/utils";
+import type { HealthResponse, OcrBlock, OcrResponse } from "@/types/ocr";
 
-const tabs = ["Full text", "Fields", "Blocks"];
+const tabs = ["Blocks", "Words", "Fields", "Full text"];
 
 function formatFileSize(size: number) {
   if (size < 1024 * 1024) {
@@ -42,6 +43,8 @@ function normalizeDocType(docType?: string) {
 export function FinanceOcrDashboard() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [preprocess, setPreprocess] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -50,6 +53,7 @@ export function FinanceOcrDashboard() {
   const [result, setResult] = useState<OcrResponse | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [activeTab, setActiveTab] = useState(tabs[0]);
+  const [selectedBlockIndex, setSelectedBlockIndex] = useState(0);
 
   useEffect(() => {
     fetch("/api/backend-health")
@@ -71,12 +75,30 @@ export function FinanceOcrDashboard() {
     return () => window.clearInterval(timer);
   }, [isProcessing]);
 
+  useEffect(() => {
+    if (!file) {
+      setFilePreviewUrl(null);
+      setImageSize({ width: 0, height: 0 });
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    setFilePreviewUrl(url);
+    setImageSize({ width: 0, height: 0 });
+
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
   const lowConfidenceCount = useMemo(() => {
     if (!result) {
       return 0;
     }
     return result.blocks.filter((block) => block.confidence < 0.75).length;
   }, [result]);
+
+  const selectedBlock = result?.blocks[selectedBlockIndex] ?? null;
+  const isPdfPreview = Boolean(file?.type === "application/pdf" || file?.name.toLowerCase().endsWith(".pdf"));
+  const isImagePreview = Boolean(filePreviewUrl && file && !isPdfPreview);
 
   function selectFile(nextFile?: File) {
     if (!nextFile) {
@@ -86,6 +108,7 @@ export function FinanceOcrDashboard() {
     setError(null);
     setResult(null);
     setProgress(0);
+    setSelectedBlockIndex(0);
   }
 
   async function processDocument() {
@@ -114,6 +137,7 @@ export function FinanceOcrDashboard() {
 
       setResult(payload as OcrResponse);
       setActiveTab(tabs[0]);
+      setSelectedBlockIndex(0);
       setProgress(100);
     } catch (err) {
       setError(err instanceof Error ? err.message : "OCR processing failed.");
@@ -128,6 +152,7 @@ export function FinanceOcrDashboard() {
     setResult(null);
     setError(null);
     setProgress(0);
+    setSelectedBlockIndex(0);
     if (inputRef.current) {
       inputRef.current.value = "";
     }
@@ -288,68 +313,100 @@ export function FinanceOcrDashboard() {
                     <div>
                       <CardTitle>Review Workspace</CardTitle>
                       <CardDescription>
-                        {result.blocks.length} OCR blocks, {result.fields.length} extracted fields,
-                        {lowConfidenceCount} low-confidence blocks.
+                        {result.blocks.length} OCR blocks, {result.words.length} words,
+                        {result.fields.length} extracted fields, {lowConfidenceCount} low-confidence blocks.
                       </CardDescription>
                     </div>
                     <Tabs tabs={tabs} value={activeTab} onValueChange={setActiveTab} />
                   </CardHeader>
                   <CardContent>
-                    {activeTab === "Full text" ? (
-                      <pre className="max-h-[560px] overflow-auto rounded-md border bg-muted/40 p-4 text-sm leading-6 whitespace-pre-wrap">
-                        {result.full_text || "No text detected"}
-                      </pre>
-                    ) : null}
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
+                      <DocumentPreviewPanel
+                        fileName={file?.name}
+                        filePreviewUrl={filePreviewUrl}
+                        imageSize={imageSize}
+                        isImagePreview={isImagePreview}
+                        isPdfPreview={isPdfPreview}
+                        blocks={result.blocks}
+                        selectedBlockIndex={selectedBlockIndex}
+                        onImageLoad={(width, height) => setImageSize({ width, height })}
+                        onSelectBlock={setSelectedBlockIndex}
+                      />
 
-                    {activeTab === "Fields" ? (
-                      <div className="overflow-hidden rounded-md border">
-                        {result.fields.length ? (
-                          <table className="w-full text-left text-sm">
-                            <thead className="bg-muted text-xs uppercase text-muted-foreground">
-                              <tr>
-                                <th className="px-4 py-3 font-medium">Field</th>
-                                <th className="px-4 py-3 font-medium">Value</th>
-                                <th className="px-4 py-3 font-medium">Confidence</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {result.fields.map((field) => (
-                                <tr key={`${field.name}-${field.value}`} className="border-t">
-                                  <td className="px-4 py-3 font-medium">{field.name}</td>
-                                  <td className="px-4 py-3">{field.value}</td>
-                                  <td className="px-4 py-3">
-                                    <ConfidenceBar value={field.confidence} />
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        ) : (
-                          <div className="flex min-h-40 items-center justify-center text-sm text-muted-foreground">
-                            No structured fields were extracted.
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
+                      <div className="min-w-0">
+                        {activeTab === "Blocks" ? (
+                          <BlockReviewPanel
+                            blocks={result.blocks}
+                            selectedBlock={selectedBlock}
+                            selectedBlockIndex={selectedBlockIndex}
+                            onSelectBlock={setSelectedBlockIndex}
+                          />
+                        ) : null}
 
-                    {activeTab === "Blocks" ? (
-                      <div className="max-h-[560px] overflow-auto rounded-md border">
-                        {result.blocks.map((block, index) => (
-                          <div key={`${block.page}-${index}`} className="grid gap-3 border-b p-4 last:border-b-0 md:grid-cols-[1fr_160px_90px]">
-                            <div>
-                              <div className="text-sm font-medium">{block.text}</div>
-                              <div className="mt-1 text-xs text-muted-foreground">
-                                Page {block.page} · {block.type} · x{block.bbox.x} y{block.bbox.y}
+                        {activeTab === "Words" ? (
+                          <div className="grid max-h-[620px] gap-2 overflow-auto rounded-md border p-3 sm:grid-cols-2">
+                            {result.words.map((word) => (
+                              <div
+                                key={word.id ?? `${word.page}-${word.block_id}-${word.index}-${word.text}`}
+                                className="rounded-md border bg-card p-3"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-medium">{word.text}</div>
+                                    <div className="mt-1 text-xs text-muted-foreground">
+                                      Page {word.page} - {word.block_id ?? "block"} - #{word.index + 1}
+                                    </div>
+                                  </div>
+                                  <Badge variant={word.status === "needs_review" ? "warning" : "muted"}>
+                                    {word.status === "needs_review" ? "Check" : "Ready"}
+                                  </Badge>
+                                </div>
+                                <div className="mt-3">
+                                  <ConfidenceBar value={word.confidence} />
+                                </div>
                               </div>
-                            </div>
-                            <ConfidenceBar value={block.confidence} />
-                            <Badge variant={block.confidence >= 0.75 ? "muted" : "warning"}>
-                              {block.confidence >= 0.75 ? "Review" : "Check"}
-                            </Badge>
+                            ))}
                           </div>
-                        ))}
+                        ) : null}
+
+                        {activeTab === "Fields" ? (
+                          <div className="max-h-[620px] overflow-auto rounded-md border">
+                            {result.fields.length ? (
+                              <table className="w-full text-left text-sm">
+                                <thead className="sticky top-0 bg-muted text-xs uppercase text-muted-foreground">
+                                  <tr>
+                                    <th className="px-4 py-3 font-medium">Field</th>
+                                    <th className="px-4 py-3 font-medium">Value</th>
+                                    <th className="px-4 py-3 font-medium">Confidence</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {result.fields.map((field) => (
+                                    <tr key={`${field.name}-${field.value}`} className="border-t">
+                                      <td className="px-4 py-3 font-medium">{field.name}</td>
+                                      <td className="px-4 py-3">{field.value}</td>
+                                      <td className="px-4 py-3">
+                                        <ConfidenceBar value={field.confidence} />
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            ) : (
+                              <div className="flex min-h-40 items-center justify-center text-sm text-muted-foreground">
+                                No structured fields were extracted.
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+
+                        {activeTab === "Full text" ? (
+                          <pre className="max-h-[620px] overflow-auto rounded-md border bg-muted/40 p-4 text-sm leading-6 whitespace-pre-wrap">
+                            {result.full_text || "No text detected"}
+                          </pre>
+                        ) : null}
                       </div>
-                    ) : null}
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -365,5 +422,189 @@ export function FinanceOcrDashboard() {
         </section>
       </div>
     </main>
+  );
+}
+
+type DocumentPreviewPanelProps = {
+  fileName?: string;
+  filePreviewUrl: string | null;
+  imageSize: { width: number; height: number };
+  isImagePreview: boolean;
+  isPdfPreview: boolean;
+  blocks: OcrBlock[];
+  selectedBlockIndex: number;
+  onImageLoad: (width: number, height: number) => void;
+  onSelectBlock: (index: number) => void;
+};
+
+function DocumentPreviewPanel({
+  fileName,
+  filePreviewUrl,
+  imageSize,
+  isImagePreview,
+  isPdfPreview,
+  blocks,
+  selectedBlockIndex,
+  onImageLoad,
+  onSelectBlock,
+}: DocumentPreviewPanelProps) {
+  return (
+    <section className="min-w-0 rounded-md border bg-muted/30">
+      <div className="flex min-h-14 items-center justify-between gap-3 border-b bg-card px-4 py-3">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">Document preview</div>
+          <div className="truncate text-xs text-muted-foreground">{fileName ?? "Processed document"}</div>
+        </div>
+        <Badge variant="outline">
+          <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
+          {isPdfPreview ? "PDF" : "Image"}
+        </Badge>
+      </div>
+
+      <div className="flex h-[620px] items-start justify-center overflow-auto p-4">
+        {isImagePreview && filePreviewUrl ? (
+          <div className="relative inline-block max-w-full overflow-hidden rounded-md border bg-card shadow-sm">
+            <img
+              src={filePreviewUrl}
+              alt="Uploaded finance document preview"
+              className="block max-h-[560px] max-w-full object-contain"
+              onLoad={(event) => {
+                onImageLoad(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight);
+              }}
+            />
+            {imageSize.width > 0 && imageSize.height > 0 ? (
+              <div className="pointer-events-none absolute inset-0">
+                {blocks.map((block, index) => {
+                  const isSelected = index === selectedBlockIndex;
+                  return (
+                    <button
+                      key={`${block.page}-${index}-${block.text}`}
+                      type="button"
+                      aria-label={`Select OCR block ${index + 1}`}
+                      onClick={() => onSelectBlock(index)}
+                      className={cn(
+                        "pointer-events-auto absolute rounded-sm border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        isSelected
+                          ? "border-accent bg-accent/25 shadow-[0_0_0_2px_rgba(255,255,255,0.75)]"
+                          : "border-secondary/80 bg-secondary/10 hover:bg-secondary/20",
+                      )}
+                      style={{
+                        left: `${(block.bbox.x / imageSize.width) * 100}%`,
+                        top: `${(block.bbox.y / imageSize.height) * 100}%`,
+                        width: `${(block.bbox.width / imageSize.width) * 100}%`,
+                        height: `${(block.bbox.height / imageSize.height) * 100}%`,
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {isPdfPreview && filePreviewUrl ? (
+          <iframe
+            title="Uploaded PDF preview"
+            src={filePreviewUrl}
+            className="h-[560px] w-full rounded-md border bg-card"
+          />
+        ) : null}
+
+        {!filePreviewUrl ? (
+          <div className="flex min-h-72 w-full items-center justify-center rounded-md border border-dashed bg-card text-sm text-muted-foreground">
+            Preview is available after selecting a document.
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+type BlockReviewPanelProps = {
+  blocks: OcrBlock[];
+  selectedBlock: OcrBlock | null;
+  selectedBlockIndex: number;
+  onSelectBlock: (index: number) => void;
+};
+
+function BlockReviewPanel({
+  blocks,
+  selectedBlock,
+  selectedBlockIndex,
+  onSelectBlock,
+}: BlockReviewPanelProps) {
+  return (
+    <section className="grid h-[620px] min-w-0 grid-rows-[auto_1fr] overflow-hidden rounded-md border bg-card">
+      <div className="border-b bg-muted/45 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">OCR text blocks</div>
+            <div className="text-xs text-muted-foreground">
+              Select a text block to match it with the document area.
+            </div>
+          </div>
+          <Badge variant={selectedBlock && selectedBlock.confidence < 0.75 ? "warning" : "muted"}>
+            {selectedBlock ? `Block ${selectedBlockIndex + 1}` : "No block"}
+          </Badge>
+        </div>
+      </div>
+
+      <div className="overflow-auto">
+        {blocks.length ? (
+          blocks.map((block, index) => (
+            <button
+              key={`${block.page}-${index}-${block.text}`}
+              type="button"
+              onClick={() => onSelectBlock(index)}
+              className={cn(
+                "grid w-full gap-3 border-b p-4 text-left transition-colors last:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                selectedBlockIndex === index ? "bg-accent/10" : "hover:bg-muted/55",
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium leading-6">{block.text}</div>
+                  {block.raw_text && block.raw_text !== block.text ? (
+                    <div className="mt-1 text-xs leading-5 text-muted-foreground">Raw: {block.raw_text}</div>
+                  ) : null}
+                </div>
+                <Badge variant={block.confidence >= 0.75 ? "muted" : "warning"}>
+                  {block.confidence >= 0.75 ? "Ready" : "Check"}
+                </Badge>
+              </div>
+
+              <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-[1fr_auto] sm:items-center">
+                <div>
+                  Page {block.page} - {block.type} - x{block.bbox.x} y{block.bbox.y}
+                </div>
+                <ConfidenceBar value={block.confidence} />
+              </div>
+
+              {block.words.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {block.words.map((word) => (
+                    <span
+                      key={`${block.page}-${index}-${word.index}-${word.text}`}
+                      className={cn(
+                        "rounded-md border px-2 py-1 text-xs",
+                        word.confidence < 0.75
+                          ? "border-accent/50 bg-accent/15 text-foreground"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {word.text}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </button>
+          ))
+        ) : (
+          <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+            No OCR blocks were detected.
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

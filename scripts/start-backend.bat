@@ -4,6 +4,12 @@ setlocal
 set "ROOT=%~dp0.."
 cd /d "%ROOT%"
 
+if exist "%ROOT%\.env" (
+    for /f "usebackq tokens=1,* delims==" %%A in (`findstr /r /v "^[ ]*# ^[ ]*$" "%ROOT%\.env"`) do (
+        if not defined %%A set "%%A=%%B"
+    )
+)
+
 if "%OCR_BACKEND_PORT%"=="" set "OCR_BACKEND_PORT=8001"
 
 echo Starting Finance OCR backend...

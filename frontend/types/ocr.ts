@@ -6,6 +6,7 @@ export type OcrField = {
 
 export type OcrBlock = {
   text: string;
+  raw_text?: string | null;
   type: string;
   bbox: {
     x: number;
@@ -15,6 +16,40 @@ export type OcrBlock = {
   };
   confidence: number;
   page: number;
+  words: OcrWord[];
+};
+
+export type OcrWord = {
+  id?: string;
+  level?: "word";
+  text: string;
+  raw_text?: string | null;
+  bbox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  confidence: number;
+  page: number;
+  index: number;
+  status?: "ready" | "needs_review";
+  block_id?: string;
+  block_text?: string;
+  source?: string;
+};
+
+export type OcrReviewItem = {
+  id: string;
+  level: "block";
+  text: string;
+  raw_text?: string | null;
+  type: string;
+  bbox: OcrBlock["bbox"];
+  confidence: number;
+  page: number;
+  status: "ready" | "needs_review";
+  words: OcrWord[];
 };
 
 export type OcrResponse = {
@@ -26,6 +61,8 @@ export type OcrResponse = {
   markdown: string;
   fields: OcrField[];
   blocks: OcrBlock[];
+  review_items: OcrReviewItem[];
+  words: OcrWord[];
   processing_time: number;
   filename: string;
 };
@@ -36,6 +73,7 @@ export type HealthResponse = {
   ocr_device: string;
   ocr_detection_model: string;
   ocr_recognition_model: string;
+  ocr_return_word_box: boolean;
   pdf_dpi: number;
   preprocess_enabled: boolean;
   finance_extraction_enabled: boolean;

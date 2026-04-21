@@ -3,9 +3,11 @@ Canonical document representation and renderers.
 Build once from OCR, render to multiple formats.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 import re
+
+from .text_processing import clean_ocr_text, split_review_words
 
 
 @dataclass
@@ -18,6 +20,8 @@ class Block:
     block_type: str = "text"
     key: Optional[str] = None
     value: Optional[str] = None
+    raw_text: Optional[str] = None
+    words: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -57,7 +61,8 @@ class Document:
         sorted_words = sorted(words, key=lambda w: (w['bbox']['y'] // 20 * 20, w['bbox']['x']))
         
         for word in sorted_words:
-            text = word.get('text', '').strip()
+            raw_text = word.get('raw_text') or word.get('text', '')
+            text = clean_ocr_text(raw_text)
             if not text:
                 continue
             
@@ -69,7 +74,9 @@ class Document:
                 bbox=bbox,
                 confidence=confidence,
                 page=page,
-                block_type=self._detect_block_type(text)
+                block_type=self._detect_block_type(text),
+                raw_text=raw_text if raw_text != text else None,
+                words=self._review_words(word.get("words"), text, bbox, confidence, page)
             )
             
             if block.block_type == "key_value":
@@ -129,6 +136,8 @@ class Document:
                     'type': b.block_type,
                     'key': b.key,
                     'value': b.value,
+                    'raw_text': b.raw_text,
+                    'words': b.words,
                     'bbox': b.bbox,
                     'confidence': b.confidence,
                     'page': b.page
@@ -137,6 +146,45 @@ class Document:
             ],
             'metadata': self.metadata
         }
+
+    def render_review_items(self) -> List[Dict[str, Any]]:
+        """Render block-level review items with nested word review data."""
+        items = []
+        for index, block in enumerate(self.blocks, start=1):
+            item_id = f"p{block.page}-b{index}"
+            items.append({
+                "id": item_id,
+                "level": "block",
+                "text": block.text,
+                "raw_text": block.raw_text,
+                "type": block.block_type,
+                "bbox": block.bbox,
+                "confidence": block.confidence,
+                "page": block.page,
+                "status": "needs_review" if block.confidence < 0.75 else "ready",
+                "words": [
+                    {
+                        **word,
+                        "id": f"{item_id}-w{word_index}",
+                        "level": "word",
+                        "status": "needs_review" if word.get("confidence", 0) < 0.75 else "ready",
+                    }
+                    for word_index, word in enumerate(block.words, start=1)
+                ],
+            })
+        return items
+
+    def render_words(self) -> List[Dict[str, Any]]:
+        """Render a flat list of reviewable word tokens."""
+        words = []
+        for item in self.render_review_items():
+            for word in item["words"]:
+                words.append({
+                    **word,
+                    "block_id": item["id"],
+                    "block_text": item["text"],
+                })
+        return words
     
     def render_full_text(self) -> str:
         """Render to plain full text (preserving structure)."""
@@ -209,3 +257,76 @@ class Document:
             prev_y = y + (block.bbox.get('height', 0) if block.bbox else 0)
         
         return '\n'.join(md_parts).strip()
+
+    @staticmethod
+    def _build_review_words(
+        text: str,
+        bbox: Dict[str, int],
+        confidence: float,
+        page: int,
+    ) -> List[Dict[str, Any]]:
+        tokens = split_review_words(text)
+        if not tokens:
+            return []
+
+        total_chars = sum(len(token) for token in tokens)
+        if total_chars <= 0:
+            return []
+
+        x = int(bbox.get("x", 0) or 0)
+        y = int(bbox.get("y", 0) or 0)
+        width = int(bbox.get("width", 0) or 0)
+        height = int(bbox.get("height", 0) or 0)
+        cursor = x
+        words = []
+
+        for index, token in enumerate(tokens):
+            token_width = width if len(tokens) == 1 else int(round(width * len(token) / total_chars))
+            if index == len(tokens) - 1:
+                token_width = max(0, x + width - cursor)
+
+            words.append({
+                "text": token,
+                "bbox": {
+                    "x": cursor,
+                    "y": y,
+                    "width": max(0, token_width),
+                    "height": height,
+                },
+                "confidence": confidence,
+                "page": page,
+                "index": index,
+            })
+            cursor += token_width
+
+        return words
+
+    @classmethod
+    def _review_words(
+        cls,
+        native_words: Optional[List[Dict[str, Any]]],
+        text: str,
+        bbox: Dict[str, int],
+        confidence: float,
+        page: int,
+    ) -> List[Dict[str, Any]]:
+        if not native_words:
+            return cls._build_review_words(text, bbox, confidence, page)
+
+        words = []
+        for index, word in enumerate(native_words):
+            clean_text = clean_ocr_text(word.get("text", ""))
+            if not clean_text:
+                continue
+
+            words.append({
+                "text": clean_text,
+                "raw_text": word.get("raw_text") if word.get("raw_text") != clean_text else None,
+                "bbox": word.get("bbox", {}),
+                "confidence": word.get("confidence", confidence),
+                "page": word.get("page", page),
+                "index": index,
+                "source": word.get("source", "paddle_word_box"),
+            })
+
+        return words

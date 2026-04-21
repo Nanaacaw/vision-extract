@@ -67,9 +67,13 @@ async def extract_finance_document(
                 {"name": field.name, "value": field.value, "confidence": field.confidence}
                 for field in doc.fields
             ],
+            "review_items": doc.render_review_items(),
+            "words": doc.render_words(),
             "blocks": [
                 {
                     "text": block.text,
+                    "raw_text": block.raw_text,
+                    "words": block.words,
                     "type": block.block_type,
                     "bbox": block.bbox,
                     "confidence": block.confidence,
@@ -146,6 +150,7 @@ async def health_check():
         "ocr_textline_orientation": settings.ocr_textline_orientation,
         "ocr_doc_orientation_classify": settings.ocr_doc_orientation_classify,
         "ocr_doc_unwarping": settings.ocr_doc_unwarping,
+        "ocr_return_word_box": settings.ocr_return_word_box,
         "pdf_dpi": settings.pdf_dpi,
         "preprocess_enabled": settings.preprocess_enabled,
         "finance_extraction_enabled": settings.finance_extraction_enabled,

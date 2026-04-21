@@ -4,8 +4,14 @@ setlocal
 set "ROOT=%~dp0.."
 cd /d "%ROOT%\frontend"
 
+if exist "%ROOT%\.env" (
+    for /f "usebackq tokens=1,* delims==" %%A in (`findstr /r /v "^[ ]*# ^[ ]*$" "%ROOT%\.env"`) do (
+        if not defined %%A set "%%A=%%B"
+    )
+)
+
 if "%OCR_BACKEND_URL%"=="" set "OCR_BACKEND_URL=http://localhost:8001"
-if "%OCR_FRONTEND_PORT%"=="" set "OCR_FRONTEND_PORT=3000"
+if "%OCR_FRONTEND_PORT%"=="" set "OCR_FRONTEND_PORT=3001"
 
 echo Starting Finance OCR frontend...
 echo URL: http://localhost:%OCR_FRONTEND_PORT%

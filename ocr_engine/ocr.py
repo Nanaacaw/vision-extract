@@ -8,7 +8,7 @@ import numpy as np
 from paddleocr import PaddleOCR
 from PIL import Image
 
-from .document import Block, Document, ExtractedField
+from .document import Document, ExtractedField
 from .document_classifier import classifier
 from .extractors import (
     InvoiceExtractor,
@@ -18,6 +18,7 @@ from .extractors import (
     TaxInvoiceExtractor,
 )
 from .settings import AppSettings, settings
+from .text_processing import clean_ocr_text
 from .validators.finance import FinanceValidator
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class OCREngine:
             use_doc_orientation_classify=config.ocr_doc_orientation_classify,
             use_doc_unwarping=config.ocr_doc_unwarping,
             use_textline_orientation=config.ocr_textline_orientation,
+            return_word_box=config.ocr_return_word_box,
             device=config.ocr_device,
         )
 
@@ -90,15 +92,10 @@ class OCREngine:
                 if preprocess:
                     image_np = self._preprocess_for_paddle(image_np)
 
-                for word in self._extract_words(image_np, page=page_index + 1):
-                    doc.add_block(
-                        Block(
-                            text=word["text"],
-                            bbox=word["bbox"],
-                            confidence=word["confidence"],
-                            page=word["page"],
-                        )
-                    )
+                doc.add_blocks_from_ocr(
+                    self._extract_words(image_np, page=page_index + 1),
+                    page=page_index + 1,
+                )
         finally:
             pdf_document.close()
 
@@ -126,6 +123,8 @@ class OCREngine:
                 box = boxes[index] if index < len(boxes) else None
                 words.append({
                     "text": clean_text,
+                    "raw_text": str(text),
+                    "words": self._native_review_words(data, index, score, page),
                     "confidence": round(float(score), 2),
                     "bbox": self._bbox_from_ocr_box(box),
                     "page": page,
@@ -246,6 +245,40 @@ class OCREngine:
         if data.get("rec_polys") is not None:
             return data["rec_polys"]
         return data.get("rec_boxes")
+
+    def _native_review_words(
+        self,
+        data: dict[str, Any],
+        block_index: int,
+        confidence: float,
+        page: int,
+    ) -> list[dict[str, Any]]:
+        text_words = self._as_list(data.get("text_word"))
+        word_boxes = self._as_list(data.get("text_word_boxes"))
+        if block_index >= len(text_words) or block_index >= len(word_boxes):
+            return []
+
+        words = []
+        block_words = self._as_list(text_words[block_index])
+        block_word_boxes = self._as_list(word_boxes[block_index])
+
+        for token_index, token in enumerate(block_words):
+            clean_text = clean_ocr_text(str(token))
+            box = block_word_boxes[token_index] if token_index < len(block_word_boxes) else None
+            if not clean_text:
+                continue
+
+            words.append({
+                "text": clean_text,
+                "raw_text": str(token),
+                "bbox": self._bbox_from_ocr_box(box),
+                "confidence": round(float(confidence), 2),
+                "page": page,
+                "index": len(words),
+                "source": "paddle_word_box",
+            })
+
+        return words
 
     @staticmethod
     def _bbox_from_ocr_box(box: Any) -> dict[str, int]:

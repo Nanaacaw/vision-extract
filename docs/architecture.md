@@ -55,7 +55,7 @@ ocr_engine/
 
 ## Configuration
 
-Runtime settings live in `ocr_engine/settings.py` and can be overridden with environment variables.
+Runtime settings live in `ocr_engine/settings.py`. The backend loads `.env` first, then reads environment variables, so local configuration can stay outside Git.
 
 ```text
 OCR_DET_MODEL=PP-OCRv5_mobile_det
@@ -63,6 +63,7 @@ OCR_REC_MODEL=PP-OCRv5_mobile_rec
 OCR_TEXTLINE_ORIENTATION=false
 OCR_DOC_ORIENTATION_CLASSIFY=false
 OCR_DOC_UNWARPING=false
+OCR_RETURN_WORD_BOX=true
 OCR_DEVICE=cpu
 OCR_PDF_DPI=150
 OCR_PREPROCESS=true
