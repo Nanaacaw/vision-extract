@@ -1,6 +1,6 @@
 # OCR AI - Finance Backend
 
-Backend-only FastAPI service for finance document OCR using PaddleOCR.
+FastAPI + Next.js service for finance document OCR using PaddleOCR PP-OCRv5 mobile models.
 
 The project accepts invoices, receipts, payment slips, tax invoices, reimbursements, and similar finance documents. It returns a canonical document representation that can be rendered as structured JSON, full text, or markdown.
 
@@ -8,8 +8,9 @@ The project accepts invoices, receipts, payment slips, tax invoices, reimburseme
 
 ```text
 Upload image/PDF
+    -> Next.js review UI
     -> FastAPI route
-    -> PaddleOCR engine
+    -> PaddleOCR engine (PP-OCRv5_mobile_det + PP-OCRv5_mobile_rec)
     -> Canonical Document
     -> JSON / Markdown / Full Text renderers
 ```
@@ -18,13 +19,15 @@ Upload image/PDF
 
 ```bash
 pip install -r requirements.txt
+npm install --prefix frontend
 python main.py
 ```
 
-Default backend URL:
+Default URLs:
 
 ```text
-http://localhost:8001
+Backend:  http://localhost:8001
+Frontend: http://localhost:3000
 ```
 
 API docs:
@@ -37,7 +40,9 @@ http://localhost:8001/docs
 
 ```bash
 make install   # Install Python dependencies
+make frontend-install
 make backend   # Start FastAPI backend on localhost:8001
+make frontend  # Start Next.js frontend on localhost:3000
 make dev       # Start backend in a separate terminal window
 make check     # Compile-check backend modules
 make clean     # Remove runtime logs
@@ -47,6 +52,8 @@ On Windows without `make`, run:
 
 ```bat
 scripts\start-backend.bat
+scripts\start-frontend.bat
+scripts\start-all.bat
 ```
 
 ## API
@@ -100,6 +107,15 @@ Generates a first-page preview for PDFs or image preview payload for images.
 ```text
 api/
   routes.py
+docs/
+  architecture.md
+  flow-system.md
+  ocr-models-and-extractors.md
+frontend/
+  app/
+  components/
+  lib/
+  types/
 ocr_engine/
   document.py
   ocr.py
@@ -111,13 +127,46 @@ requirements.txt
 setup.bat
 ```
 
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Flow System](docs/flow-system.md)
+- [OCR Models And Extractors](docs/ocr-models-and-extractors.md)
+
+## Frontend
+
+The frontend is a simple internal review workspace built with:
+
+- Next.js
+- TypeScript
+- Tailwind CSS
+- shadcn/ui-style local components
+
+The browser calls Next.js API routes under `frontend/app/api/*`. Those routes proxy OCR requests to the FastAPI backend, so client-side code does not need to know the backend URL.
+
+```bat
+cd frontend
+set OCR_BACKEND_URL=http://localhost:8001
+npm run dev
+```
+
 ## Notes
 
-- This repository is backend-only.
-- There is no bundled browser UI.
 - `OCR_BACKEND_PORT` can override the default port.
+- `OCR_BACKEND_URL` can override the backend URL used by the Next.js proxy.
+- `OCR_DET_MODEL` can override the text detection model. Default is `PP-OCRv5_mobile_det`.
+- `OCR_REC_MODEL` can override the text recognition model. Default is `PP-OCRv5_mobile_rec`.
+- `OCR_TEXTLINE_ORIENTATION=true` can enable the optional text-line orientation classifier.
+- `OCR_DOC_ORIENTATION_CLASSIFY=true` can enable page orientation classification.
+- `OCR_DOC_UNWARPING=true` can enable document unwarping.
+- `OCR_DEVICE` can override the inference device. Default is `cpu`.
+- `OCR_PDF_DPI` can override PDF rasterization DPI. Default is `150`.
+- `OCR_PREPROCESS=false` can disable image preprocessing by default.
+- `OCR_FINANCE_EXTRACTION=false` can disable finance classification and field extraction.
 
 ```bat
 set OCR_BACKEND_PORT=8002
+set OCR_DET_MODEL=PP-OCRv5_mobile_det
+set OCR_REC_MODEL=PP-OCRv5_mobile_rec
 python main.py
 ```
