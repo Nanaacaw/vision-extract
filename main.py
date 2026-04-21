@@ -1,7 +1,9 @@
 """OCR AI backend application entry point."""
 
 from fastapi import FastAPI
+
 from api.routes import router
+from ocr_engine.settings import settings
 
 app = FastAPI(
     title="OCR AI - Finance",
@@ -26,18 +28,15 @@ async def root() -> dict[str, object]:
 
 
 if __name__ == "__main__":
-    import os
     import uvicorn
-
-    backend_port = int(os.getenv("OCR_BACKEND_PORT", "8001"))
 
     print("=" * 60)
     print("Starting OCR AI - Finance Edition")
     print("=" * 60)
-    print(f"Server: http://localhost:{backend_port}")
-    print(f"API Docs: http://localhost:{backend_port}/docs")
+    print(f"Server: http://localhost:{settings.backend_port}")
+    print(f"API Docs: http://localhost:{settings.backend_port}/docs")
     print("=" * 60)
-    print("\nUsing PaddleOCR Engine")
+    print("\nUsing PaddleOCR PP-OCRv5 Engine")
     print("Supports: Images + PDF files")
     print("Features: Finance auto-detection, JSON/Markdown/Text rendering")
     print("=" * 60)
@@ -45,7 +44,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=backend_port,
+        port=settings.backend_port,
         reload=False,
         log_level="info"
     )

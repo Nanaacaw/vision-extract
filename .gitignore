@@ -13,6 +13,11 @@ ENV/
 dist/
 build/
 node_modules/
+.next/
+out/
+frontend/.next/
+frontend/out/
+frontend/.env.local
 
 # IDE
 .vscode/
