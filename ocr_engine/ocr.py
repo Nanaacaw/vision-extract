@@ -1,7 +1,3 @@
-"""
-Core OCR engine using PaddleOCR with canonical document representation.
-"""
-
 import cv2
 import numpy as np
 from PIL import Image

@@ -1,13 +1,6 @@
-"""
-OCR AI - Main Application Entry Point
-
-A web-based OCR application using FastAPI and PaddleOCR.
-Supports images, PDFs, and finance document extraction.
-"""
+"""OCR AI backend application entry point."""
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from api.routes import router
 
 app = FastAPI(
@@ -19,34 +12,40 @@ app = FastAPI(
 # Include API routes
 app.include_router(router)
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
 
 @app.get("/")
-async def serve_frontend():
-    """Serve the main HTML page."""
-    return FileResponse("static/index.html")
+async def root() -> dict[str, object]:
+    """Return backend service metadata."""
+    return {
+        "service": "OCR AI - Finance Edition",
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/api/health",
+        "endpoints": ["/api/ocr/finance", "/api/preview", "/api/health"],
+    }
 
 
 if __name__ == "__main__":
+    import os
     import uvicorn
 
+    backend_port = int(os.getenv("OCR_BACKEND_PORT", "8001"))
+
     print("=" * 60)
-    print("🚀 Starting OCR AI - Finance Edition")
+    print("Starting OCR AI - Finance Edition")
     print("=" * 60)
-    print("📍 Server: http://localhost:8000")
-    print("📖 API Docs: http://localhost:8000/docs")
+    print(f"Server: http://localhost:{backend_port}")
+    print(f"API Docs: http://localhost:{backend_port}/docs")
     print("=" * 60)
-    print("\n✨ Using PaddleOCR Engine")
-    print("📄 Supports: Images + PDF files")
-    print("🎯 Features: Finance auto-detection, Bounding boxes")
+    print("\nUsing PaddleOCR Engine")
+    print("Supports: Images + PDF files")
+    print("Features: Finance auto-detection, JSON/Markdown/Text rendering")
     print("=" * 60)
 
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8000,
+        port=backend_port,
         reload=False,
         log_level="info"
     )

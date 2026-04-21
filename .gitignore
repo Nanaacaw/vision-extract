@@ -12,6 +12,7 @@ ENV/
 *.egg-info/
 dist/
 build/
+node_modules/
 
 # IDE
 .vscode/
@@ -31,6 +32,11 @@ Thumbs.db
 test_images/
 input/
 *.log
+*.err
 
 # Environment variables
 .env
+
+# Skills
+.agents
+skills-lock.json
