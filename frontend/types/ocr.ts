@@ -58,12 +58,22 @@ export type LayoutEvidence = {
   source: string;
 };
 
+export type SmartCropInfo = {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  applied: boolean;
+  reason?: string;
+};
+
 export type OcrResponse = {
   success: boolean;
   doc_type: string;
   classification_confidence: number;
   page_count: number;
   preprocess_profile: string;
+  smart_crop: SmartCropInfo;
   required_fields: string[];
   missing_fields: string[];
   layout_evidence: LayoutEvidence[];
@@ -88,5 +98,6 @@ export type HealthResponse = {
   pdf_dpi: number;
   preprocess_enabled: boolean;
   preprocess_profile: string;
+  smart_crop_enabled: boolean;
   finance_extraction_enabled: boolean;
 };

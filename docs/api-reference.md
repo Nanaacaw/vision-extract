@@ -30,6 +30,8 @@ Example response:
   "ocr_return_word_box": true,
   "pdf_dpi": 150,
   "preprocess_enabled": true,
+  "preprocess_profile": "auto",
+  "smart_crop_enabled": false,
   "finance_extraction_enabled": true
 }
 ```
@@ -48,13 +50,16 @@ Form fields:
 | `file` | file | yes | Image or PDF document. Supported: `png`, `jpg`, `jpeg`, `bmp`, `tiff`, `tif`, `webp`, `pdf`. |
 | `preprocess` | boolean | no | Overrides default image preprocessing for this request. |
 | `preprocess_profile` | string | no | Per-request preprocessing profile: `auto`, `receipt`, `camera`, `clean`, or `none`. |
+| `smart_crop` | boolean | no | Crops the likely document region before OCR for image uploads. PDF uploads ignore this and report `pdf_not_cropped`. |
 
 Example curl:
 
 ```bash
 curl -X POST http://localhost:8001/api/ocr/finance \
   -F "file=@input/2.png" \
-  -F "preprocess=true"
+  -F "preprocess=true" \
+  -F "preprocess_profile=receipt" \
+  -F "smart_crop=true"
 ```
 
 Response fields:
@@ -66,6 +71,7 @@ Response fields:
 | `classification_confidence` | number | Classifier confidence score. |
 | `page_count` | number | Number of processed pages. |
 | `preprocess_profile` | string | Profile actually used by the OCR engine. |
+| `smart_crop` | object | Document region crop metadata: `applied`, `x`, `y`, `width`, `height`, or skip reason. Returned OCR boxes stay aligned to the original image preview. |
 | `required_fields` | array | Required fields for the detected finance document type. |
 | `missing_fields` | array | Required fields still missing after normal and layout-aware extraction. |
 | `layout_evidence` | array | Fields recovered by layout-aware fallback extraction. |

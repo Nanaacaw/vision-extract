@@ -5,6 +5,7 @@ import {
   AlertCircle,
   Camera,
   CheckCircle2,
+  Crop,
   FileText,
   ImageIcon,
   Loader2,
@@ -34,6 +35,14 @@ const preprocessProfiles = [
   { value: "none", label: "None" },
 ];
 
+type BatchItem = {
+  id: string;
+  file: File;
+  status: "queued" | "processing" | "done" | "error";
+  result?: OcrResponse;
+  error?: string;
+};
+
 function formatFileSize(size: number) {
   if (size < 1024 * 1024) {
     return `${(size / 1024).toFixed(1)} KB`;
@@ -59,6 +68,9 @@ export function FinanceOcrDashboard() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [preprocess, setPreprocess] = useState(true);
   const [preprocessProfile, setPreprocessProfile] = useState("auto");
+  const [smartCrop, setSmartCrop] = useState(false);
+  const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -121,13 +133,22 @@ export function FinanceOcrDashboard() {
     return result.blocks.filter((block) => block.confidence < 0.75).length;
   }, [result]);
 
+  const completedBatchCount = useMemo(
+    () => batchItems.filter((item) => item.status === "done" || item.status === "error").length,
+    [batchItems],
+  );
+
   const selectedBlock = result?.blocks[selectedBlockIndex] ?? null;
   const isPdfPreview = Boolean(file?.type === "application/pdf" || file?.name.toLowerCase().endsWith(".pdf"));
   const isImagePreview = Boolean(filePreviewUrl && file && !isPdfPreview);
 
-  function selectFile(nextFile?: File, nextProfile?: string) {
+  function selectFile(nextFile?: File, nextProfile?: string, clearBatch = true) {
     if (!nextFile) {
       return;
+    }
+    if (clearBatch) {
+      setBatchItems([]);
+      setActiveBatchId(null);
     }
     setFile(nextFile);
     setError(null);
@@ -140,6 +161,36 @@ export function FinanceOcrDashboard() {
       setPreprocessProfile(nextProfile);
     }
     stopCamera();
+  }
+
+  function selectFiles(nextFiles?: FileList | File[] | null) {
+    const files = Array.from(nextFiles ?? []).filter(Boolean);
+    if (!files.length) {
+      return;
+    }
+
+    if (files.length === 1) {
+      selectFile(files[0]);
+      return;
+    }
+
+    const items = files.map((nextFile, index) => ({
+      id: `${nextFile.name}-${nextFile.size}-${nextFile.lastModified}-${index}`,
+      file: nextFile,
+      status: "queued" as const,
+    }));
+    setBatchItems(items);
+    setActiveBatchId(items[0].id);
+    selectFile(items[0].file, undefined, false);
+  }
+
+  function openBatchItem(item: BatchItem) {
+    setActiveBatchId(item.id);
+    setFile(item.file);
+    setError(item.error ?? null);
+    setResult(item.result ?? null);
+    setSelectedBlockIndex(0);
+    setActiveTab(tabs[0]);
   }
 
   function stopCamera() {
@@ -204,8 +255,28 @@ export function FinanceOcrDashboard() {
     );
   }
 
+  async function processOneDocument(targetFile: File) {
+    const formData = new FormData();
+    formData.append("file", targetFile);
+    formData.append("preprocess", String(preprocess));
+    formData.append("preprocess_profile", preprocess ? preprocessProfile : "none");
+    formData.append("smart_crop", String(smartCrop));
+
+    const response = await fetch("/api/ocr/finance", {
+      method: "POST",
+      body: formData,
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      throw new Error(payload.detail ?? "OCR processing failed.");
+    }
+
+    return payload as OcrResponse;
+  }
+
   async function processDocument() {
-    if (!file) {
+    if (!file && !batchItems.length) {
       setError("Choose a document before processing.");
       return;
     }
@@ -213,23 +284,55 @@ export function FinanceOcrDashboard() {
     setIsProcessing(true);
     setError(null);
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("preprocess", String(preprocess));
-    formData.append("preprocess_profile", preprocess ? preprocessProfile : "none");
-
     try {
-      const response = await fetch("/api/ocr/finance", {
-        method: "POST",
-        body: formData,
-      });
-      const payload = await response.json();
+      if (batchItems.length > 0) {
+        let latestResult: OcrResponse | null = null;
+        let latestFile: File | null = null;
 
-      if (!response.ok) {
-        throw new Error(payload.detail ?? "OCR processing failed.");
+        for (const [index, item] of batchItems.entries()) {
+          setActiveBatchId(item.id);
+          setFile(item.file);
+          setResult(null);
+          setSelectedBlockIndex(0);
+          setProgress(Math.round((index / batchItems.length) * 100));
+          setBatchItems((current) =>
+            current.map((candidate) =>
+              candidate.id === item.id ? { ...candidate, status: "processing", error: undefined } : candidate,
+            ),
+          );
+
+          try {
+            const payload = await processOneDocument(item.file);
+            latestResult = payload;
+            latestFile = item.file;
+            setResult(payload);
+            setBatchItems((current) =>
+              current.map((candidate) =>
+                candidate.id === item.id
+                  ? { ...candidate, status: "done", result: payload, error: undefined }
+                  : candidate,
+              ),
+            );
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "OCR processing failed.";
+            setError(message);
+            setBatchItems((current) =>
+              current.map((candidate) =>
+                candidate.id === item.id ? { ...candidate, status: "error", error: message } : candidate,
+              ),
+            );
+          }
+        }
+
+        if (latestResult && latestFile) {
+          setFile(latestFile);
+          setResult(latestResult);
+        }
+      } else if (file) {
+        const payload = await processOneDocument(file);
+        setResult(payload);
       }
 
-      setResult(payload as OcrResponse);
       setActiveTab(tabs[0]);
       setSelectedBlockIndex(0);
       setProgress(100);
@@ -247,6 +350,8 @@ export function FinanceOcrDashboard() {
     setError(null);
     setCameraError(null);
     setProgress(0);
+    setBatchItems([]);
+    setActiveBatchId(null);
     setSelectedBlockIndex(0);
     stopCamera();
     if (inputRef.current) {
@@ -308,7 +413,7 @@ export function FinanceOcrDashboard() {
                 onDrop={(event) => {
                   event.preventDefault();
                   setIsDragging(false);
-                  selectFile(event.dataTransfer.files[0]);
+                  selectFiles(event.dataTransfer.files);
                 }}
                 className={cn(
                   "flex min-h-48 w-full cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed bg-muted/35 px-4 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -316,16 +421,17 @@ export function FinanceOcrDashboard() {
                 )}
               >
                 <UploadCloud className="mb-3 h-8 w-8 text-secondary" aria-hidden="true" />
-                <span className="font-medium">Drop a document here</span>
+                <span className="font-medium">Drop documents here</span>
                 <span className="mt-1 text-sm text-muted-foreground">PNG, JPG, WEBP, TIFF, BMP, or PDF</span>
               </button>
 
               <Input
                 ref={inputRef}
                 type="file"
+                multiple
                 accept=".png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp,.pdf"
                 className="sr-only"
-                onChange={(event) => selectFile(event.target.files?.[0])}
+                onChange={(event) => selectFiles(event.target.files)}
               />
 
               <div className="rounded-md border bg-card p-3">
@@ -388,6 +494,51 @@ export function FinanceOcrDashboard() {
                 </div>
               ) : null}
 
+              {batchItems.length > 1 ? (
+                <div className="rounded-md border bg-card p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium">Batch queue</div>
+                      <div className="text-xs text-muted-foreground">
+                        {completedBatchCount}/{batchItems.length} documents completed
+                      </div>
+                    </div>
+                    <Badge variant="outline">{batchItems.length} files</Badge>
+                  </div>
+                  <div className="max-h-48 space-y-2 overflow-auto">
+                    {batchItems.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => openBatchItem(item)}
+                        className={cn(
+                          "grid w-full gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          activeBatchId === item.id ? "border-secondary bg-secondary/10" : "bg-muted/30 hover:bg-muted",
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="truncate font-medium">{item.file.name}</span>
+                          <Badge
+                            variant={
+                              item.status === "error"
+                                ? "warning"
+                                : item.status === "done"
+                                  ? "secondary"
+                                  : item.status === "processing"
+                                    ? "warning"
+                                    : "muted"
+                            }
+                          >
+                            {item.status}
+                          </Badge>
+                        </div>
+                        {item.error ? <div className="text-xs text-destructive">{item.error}</div> : null}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <label className="flex min-h-11 items-center gap-3 rounded-md border bg-card px-3 text-sm">
                 <input
                   type="checkbox"
@@ -414,10 +565,27 @@ export function FinanceOcrDashboard() {
                 </select>
               </label>
 
+              <label className="flex min-h-11 items-center gap-3 rounded-md border bg-card px-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={smartCrop}
+                  onChange={(event) => setSmartCrop(event.target.checked)}
+                  className="h-4 w-4 rounded border-input accent-primary"
+                />
+                <span className="flex min-w-0 items-center gap-2">
+                  <Crop className="h-4 w-4 text-secondary" aria-hidden="true" />
+                  Smart crop document region
+                </span>
+              </label>
+
               {isProcessing ? (
                 <div className="space-y-2">
                   <Progress value={progress} />
-                  <div className="text-xs text-muted-foreground">Processing OCR and finance extraction...</div>
+                  <div className="text-xs text-muted-foreground">
+                    {batchItems.length > 1
+                      ? `Processing batch ${completedBatchCount}/${batchItems.length}...`
+                      : "Processing OCR and finance extraction..."}
+                  </div>
                 </div>
               ) : null}
 
@@ -428,9 +596,9 @@ export function FinanceOcrDashboard() {
                 </div>
               ) : null}
 
-              <Button type="button" className="w-full" disabled={!file || isProcessing} onClick={processDocument}>
+              <Button type="button" className="w-full" disabled={(!file && !batchItems.length) || isProcessing} onClick={processDocument}>
                 {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-                Process OCR
+                {batchItems.length > 1 ? `Process ${batchItems.length} documents` : "Process OCR"}
               </Button>
             </CardContent>
           </Card>
@@ -438,7 +606,7 @@ export function FinanceOcrDashboard() {
           <div className="space-y-6">
             {result ? (
               <>
-                <div className="grid gap-4 md:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-5">
                   <Card>
                     <CardHeader>
                       <CardDescription>Document type</CardDescription>
@@ -463,6 +631,17 @@ export function FinanceOcrDashboard() {
                       <CardTitle>{result.processing_time}s</CardTitle>
                       <div className="pt-1 text-xs capitalize text-muted-foreground">
                         {result.preprocess_profile} profile
+                      </div>
+                    </CardHeader>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardDescription>Region</CardDescription>
+                      <CardTitle>{result.smart_crop?.applied ? "Cropped" : "Full"}</CardTitle>
+                      <div className="pt-1 text-xs text-muted-foreground">
+                        {result.smart_crop?.applied
+                          ? `${result.smart_crop.width}x${result.smart_crop.height}`
+                          : "Original image"}
                       </div>
                     </CardHeader>
                   </Card>

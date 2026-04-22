@@ -76,6 +76,8 @@ Form fields:
 ```text
 file: image or PDF document
 preprocess: true | false
+preprocess_profile: auto | receipt | camera | clean | none
+smart_crop: true | false
 ```
 
 Example response shape:
@@ -133,6 +135,7 @@ setup.bat
 - [API Reference](docs/api-reference.md)
 - [Flow System](docs/flow-system.md)
 - [OCR Models And Extractors](docs/ocr-models-and-extractors.md)
+- [Future Plan](docs/future-plan.md)
 
 ## Frontend
 
@@ -146,6 +149,8 @@ The frontend is a simple internal review workspace built with:
 The browser calls Next.js API routes under `frontend/app/api/*`. Those routes proxy OCR requests to the FastAPI backend, so client-side code does not need to know the backend URL.
 
 The upload panel supports file upload, drag-and-drop, and live camera capture. Camera frames are captured locally in the browser as JPEG files and are only sent to the backend after the user clicks `Process OCR`.
+
+The frontend also supports batch upload for multiple documents and an optional smart crop toggle for image uploads. Smart crop runs on the backend, keeps OCR boxes aligned to the original preview, and is best used for camera photos with visible table/background around the receipt.
 
 ```bat
 cd frontend
@@ -167,6 +172,7 @@ npm run dev -- --port 3001
 - `OCR_PDF_DPI` can override PDF rasterization DPI. Default is `150`.
 - `OCR_PREPROCESS=false` can disable image preprocessing by default.
 - `OCR_PREPROCESS_PROFILE` sets the default preprocessing profile: `auto`, `receipt`, `camera`, `clean`, or `none`.
+- `OCR_SMART_CROP=true` can enable smart document-region cropping by default. It can still be overridden per request.
 - `OCR_FINANCE_EXTRACTION=false` can disable finance classification and field extraction.
 
 ```bat

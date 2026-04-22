@@ -1,10 +1,30 @@
+"""Geometry-preserving preprocessing profiles for PaddleOCR."""
+
+from dataclasses import dataclass
+
 import cv2
 import numpy as np
 
-"""Geometry-preserving preprocessing profiles for PaddleOCR."""
-
 PreprocessProfile = str
 VALID_PROFILES = {"auto", "none", "clean", "receipt", "camera"}
+
+
+@dataclass(frozen=True)
+class CropRegion:
+    x: int
+    y: int
+    width: int
+    height: int
+    applied: bool = False
+
+    def as_dict(self) -> dict[str, int | bool]:
+        return {
+            "x": self.x,
+            "y": self.y,
+            "width": self.width,
+            "height": self.height,
+            "applied": self.applied,
+        }
 
 
 def resolve_profile(profile: str | None, file_type: str) -> PreprocessProfile:
@@ -30,6 +50,49 @@ def apply_preprocessing(
     if resolved == "camera":
         return _camera_photo(image_np)
     return _receipt(image_np)
+
+
+def crop_document_region(image_np: np.ndarray, padding: int = 18) -> tuple[np.ndarray, CropRegion]:
+    """Crop likely document region without rotating or warping the image."""
+    height, width = image_np.shape[:2]
+    full_region = CropRegion(0, 0, width, height, applied=False)
+    if width < 160 or height < 160:
+        return image_np, full_region
+
+    gray = _to_gray(image_np)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 50, 150)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+    closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=2)
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return image_np, full_region
+
+    image_area = width * height
+    candidates = []
+    for contour in contours:
+        x, y, crop_width, crop_height = cv2.boundingRect(contour)
+        area = crop_width * crop_height
+        if area < image_area * 0.08 or area > image_area * 0.96:
+            continue
+        aspect_ratio = crop_width / max(crop_height, 1)
+        if aspect_ratio < 0.18 or aspect_ratio > 5.5:
+            continue
+        candidates.append((area, x, y, crop_width, crop_height))
+
+    if not candidates:
+        return image_np, full_region
+
+    _, x, y, crop_width, crop_height = max(candidates, key=lambda item: item[0])
+    x1 = max(0, x - padding)
+    y1 = max(0, y - padding)
+    x2 = min(width, x + crop_width + padding)
+    y2 = min(height, y + crop_height + padding)
+    if (x2 - x1) >= width * 0.96 and (y2 - y1) >= height * 0.96:
+        return image_np, full_region
+
+    region = CropRegion(x1, y1, x2 - x1, y2 - y1, applied=True)
+    return image_np[y1:y2, x1:x2].copy(), region
 
 
 def _to_gray(image_np: np.ndarray) -> np.ndarray:

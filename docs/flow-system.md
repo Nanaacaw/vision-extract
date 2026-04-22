@@ -11,7 +11,11 @@ flowchart TD
     C --> D{PDF?}
     D -- No --> E[Decode image with Pillow]
     D -- Yes --> F[Rasterize each PDF page with PyMuPDF]
-    E --> G{Preprocess enabled?}
+    E --> S{Smart crop image?}
+    S -- Yes --> T[Crop likely document region]
+    S -- No --> U[Use full image]
+    T --> G{Preprocess enabled?}
+    U --> G
     F --> G
     G -- Yes --> H[OpenCV denoise and adaptive threshold]
     G -- No --> I[Use decoded image]
@@ -35,7 +39,9 @@ flowchart TD
 5. Image flow:
    - PIL decodes bytes
    - image is converted to NumPy
+   - optional smart crop detects the likely document region
    - optional preprocessing runs
+   - crop offsets are added back so boxes align with the original preview
    - PaddleOCR PP-OCRv5 `predict()` extracts boxes, text, confidence
 6. PDF flow:
    - PyMuPDF opens PDF bytes

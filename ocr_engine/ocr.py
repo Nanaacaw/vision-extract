@@ -18,7 +18,7 @@ from .extractors import (
     TaxInvoiceExtractor,
 )
 from .layout_extraction import enrich_finance_data
-from .preprocessing import apply_preprocessing, resolve_profile
+from .preprocessing import CropRegion, apply_preprocessing, crop_document_region, resolve_profile
 from .settings import AppSettings, settings
 from .text_processing import clean_ocr_text
 from .validators.finance import FinanceValidator
@@ -53,12 +53,14 @@ class OCREngine:
         image_data: bytes,
         preprocess: bool | None = None,
         preprocess_profile: str | None = None,
+        smart_crop: bool | None = None,
     ) -> str:
         """Extract plain text."""
         doc = self.extract_document(
             image_data,
             preprocess=preprocess,
             preprocess_profile=preprocess_profile,
+            smart_crop=smart_crop,
         )
         return doc.render_full_text()
 
@@ -67,16 +69,18 @@ class OCREngine:
         file_data: bytes,
         preprocess: bool | None = None,
         preprocess_profile: str | None = None,
+        smart_crop: bool | None = None,
         is_pdf: bool = False,
     ) -> Document:
         """Extract a canonical document from image or PDF bytes."""
         try:
             should_preprocess = self.config.preprocess_enabled if preprocess is None else preprocess
             profile = preprocess_profile or self.config.preprocess_profile
+            should_smart_crop = self.config.smart_crop_enabled if smart_crop is None else smart_crop
             if is_pdf:
                 doc = self._extract_from_pdf(file_data, should_preprocess, profile)
             else:
-                doc = self._extract_from_image(file_data, should_preprocess, profile)
+                doc = self._extract_from_image(file_data, should_preprocess, profile, should_smart_crop)
 
             self._apply_finance_extraction(doc)
             return doc
@@ -89,15 +93,24 @@ class OCREngine:
         image_data: bytes,
         preprocess: bool,
         preprocess_profile: str,
+        smart_crop: bool,
     ) -> Document:
         image_np = self._decode_image(image_data)
+        crop_region = CropRegion(0, 0, image_np.shape[1], image_np.shape[0], applied=False)
+        if smart_crop:
+            image_np, crop_region = crop_document_region(image_np)
+
         if preprocess:
             image_np = apply_preprocessing(image_np, preprocess_profile, file_type="image")
 
         doc = Document()
         doc.page_count = 1
         doc.metadata["preprocess_profile"] = resolve_profile(preprocess_profile, "image") if preprocess else "none"
-        doc.add_blocks_from_ocr(self._extract_words(image_np, page=1), page=1)
+        doc.metadata["smart_crop"] = crop_region.as_dict()
+        doc.add_blocks_from_ocr(
+            self._offset_ocr_words(self._extract_words(image_np, page=1), crop_region),
+            page=1,
+        )
         return doc
 
     def _extract_from_pdf(
@@ -110,6 +123,7 @@ class OCREngine:
         doc = Document()
         doc.page_count = len(pdf_document)
         doc.metadata["preprocess_profile"] = resolve_profile(preprocess_profile, "pdf") if preprocess else "none"
+        doc.metadata["smart_crop"] = {"applied": False, "reason": "pdf_not_cropped"}
 
         try:
             for page_index in range(doc.page_count):
@@ -224,6 +238,24 @@ class OCREngine:
             return cv2.cvtColor(image_np, cv2.COLOR_RGBA2BGR)
 
         return cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+
+    @staticmethod
+    def _offset_ocr_words(words: list[dict[str, Any]], crop_region: CropRegion) -> list[dict[str, Any]]:
+        if not crop_region.applied:
+            return words
+
+        for word in words:
+            OCREngine._offset_bbox(word.get("bbox"), crop_region.x, crop_region.y)
+            for token in word.get("words", []):
+                OCREngine._offset_bbox(token.get("bbox"), crop_region.x, crop_region.y)
+        return words
+
+    @staticmethod
+    def _offset_bbox(bbox: Any, x_offset: int, y_offset: int) -> None:
+        if not isinstance(bbox, dict):
+            return
+        bbox["x"] = int(bbox.get("x", 0) or 0) + x_offset
+        bbox["y"] = int(bbox.get("y", 0) or 0) + y_offset
 
     @staticmethod
     def _result_to_dict(result: Any) -> dict[str, Any]:

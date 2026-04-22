@@ -40,6 +40,7 @@ async def extract_finance_document(
     file: UploadFile = File(...),
     preprocess: bool = Form(settings.preprocess_enabled),
     preprocess_profile: str = Form(settings.preprocess_profile),
+    smart_crop: bool = Form(settings.smart_crop_enabled),
 ):
     """Extract finance document."""
     file_type = validate_file(file.filename)
@@ -55,6 +56,7 @@ async def extract_finance_document(
             content,
             preprocess=preprocess,
             preprocess_profile=preprocess_profile,
+            smart_crop=smart_crop,
             is_pdf=is_pdf,
         )
 
@@ -67,6 +69,7 @@ async def extract_finance_document(
             "classification_confidence": doc.classification_confidence,
             "page_count": doc.page_count,
             "preprocess_profile": doc.metadata.get("preprocess_profile", "none"),
+            "smart_crop": doc.metadata.get("smart_crop", {"applied": False}),
             "required_fields": doc.metadata.get("required_fields", []),
             "missing_fields": doc.metadata.get("missing_fields", []),
             "layout_evidence": doc.metadata.get("layout_evidence", []),
@@ -165,6 +168,7 @@ async def health_check():
         "pdf_dpi": settings.pdf_dpi,
         "preprocess_enabled": settings.preprocess_enabled,
         "preprocess_profile": settings.preprocess_profile,
+        "smart_crop_enabled": settings.smart_crop_enabled,
         "finance_extraction_enabled": settings.finance_extraction_enabled,
         "features": [
             "Canonical document representation",

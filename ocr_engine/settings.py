@@ -56,6 +56,7 @@ class AppSettings:
     pdf_dpi: int = env_int("OCR_PDF_DPI", 150)
     preprocess_enabled: bool = env_bool("OCR_PREPROCESS", True)
     preprocess_profile: str = env_str("OCR_PREPROCESS_PROFILE", "auto")
+    smart_crop_enabled: bool = env_bool("OCR_SMART_CROP", False)
     finance_extraction_enabled: bool = env_bool("OCR_FINANCE_EXTRACTION", True)
 
 
