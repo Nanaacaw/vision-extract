@@ -39,6 +39,7 @@ def validate_file(filename: str) -> str:
 async def extract_finance_document(
     file: UploadFile = File(...),
     preprocess: bool = Form(settings.preprocess_enabled),
+    preprocess_profile: str = Form(settings.preprocess_profile),
 ):
     """Extract finance document."""
     file_type = validate_file(file.filename)
@@ -50,7 +51,12 @@ async def extract_finance_document(
         content = await file.read()
         logger.info("File size: %.1f KB", len(content) / 1024)
 
-        doc = ocr_engine.extract_document(content, preprocess=preprocess, is_pdf=is_pdf)
+        doc = ocr_engine.extract_document(
+            content,
+            preprocess=preprocess,
+            preprocess_profile=preprocess_profile,
+            is_pdf=is_pdf,
+        )
 
         elapsed = time.time() - start_time
         logger.info("Processing completed in %.2fs - Type: %s", elapsed, doc.doc_type)
@@ -60,6 +66,11 @@ async def extract_finance_document(
             "doc_type": doc.doc_type,
             "classification_confidence": doc.classification_confidence,
             "page_count": doc.page_count,
+            "preprocess_profile": doc.metadata.get("preprocess_profile", "none"),
+            "required_fields": doc.metadata.get("required_fields", []),
+            "missing_fields": doc.metadata.get("missing_fields", []),
+            "layout_evidence": doc.metadata.get("layout_evidence", []),
+            "validation_errors": doc.metadata.get("validation_errors", []),
             "json": doc.render_json(),
             "full_text": doc.render_full_text(),
             "markdown": doc.render_markdown(),
@@ -153,6 +164,7 @@ async def health_check():
         "ocr_return_word_box": settings.ocr_return_word_box,
         "pdf_dpi": settings.pdf_dpi,
         "preprocess_enabled": settings.preprocess_enabled,
+        "preprocess_profile": settings.preprocess_profile,
         "finance_extraction_enabled": settings.finance_extraction_enabled,
         "features": [
             "Canonical document representation",

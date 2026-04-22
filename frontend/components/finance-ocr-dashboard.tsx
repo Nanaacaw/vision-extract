@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  Camera,
   CheckCircle2,
   FileText,
   ImageIcon,
@@ -25,6 +26,13 @@ import { cn } from "@/lib/utils";
 import type { HealthResponse, OcrBlock, OcrResponse } from "@/types/ocr";
 
 const tabs = ["Blocks", "Words", "Fields", "Full text"];
+const preprocessProfiles = [
+  { value: "auto", label: "Auto" },
+  { value: "receipt", label: "Receipt" },
+  { value: "camera", label: "Camera" },
+  { value: "clean", label: "Clean scan" },
+  { value: "none", label: "None" },
+];
 
 function formatFileSize(size: number) {
   if (size < 1024 * 1024) {
@@ -42,10 +50,15 @@ function normalizeDocType(docType?: string) {
 
 export function FinanceOcrDashboard() {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [preprocess, setPreprocess] = useState(true);
+  const [preprocessProfile, setPreprocessProfile] = useState("auto");
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -89,6 +102,18 @@ export function FinanceOcrDashboard() {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
+  useEffect(() => {
+    if (videoRef.current && cameraStream) {
+      videoRef.current.srcObject = cameraStream;
+    }
+  }, [cameraStream]);
+
+  useEffect(() => {
+    return () => {
+      cameraStream?.getTracks().forEach((track) => track.stop());
+    };
+  }, [cameraStream]);
+
   const lowConfidenceCount = useMemo(() => {
     if (!result) {
       return 0;
@@ -100,15 +125,83 @@ export function FinanceOcrDashboard() {
   const isPdfPreview = Boolean(file?.type === "application/pdf" || file?.name.toLowerCase().endsWith(".pdf"));
   const isImagePreview = Boolean(filePreviewUrl && file && !isPdfPreview);
 
-  function selectFile(nextFile?: File) {
+  function selectFile(nextFile?: File, nextProfile?: string) {
     if (!nextFile) {
       return;
     }
     setFile(nextFile);
     setError(null);
+    setCameraError(null);
     setResult(null);
     setProgress(0);
     setSelectedBlockIndex(0);
+    if (nextProfile) {
+      setPreprocess(true);
+      setPreprocessProfile(nextProfile);
+    }
+    stopCamera();
+  }
+
+  function stopCamera() {
+    cameraStream?.getTracks().forEach((track) => track.stop());
+    setCameraStream(null);
+  }
+
+  async function startCamera() {
+    setCameraError(null);
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("Camera is not available in this browser.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+      });
+      setCameraStream(stream);
+    } catch (err) {
+      setCameraError(err instanceof Error ? err.message : "Camera permission was denied.");
+    }
+  }
+
+  function captureCameraFrame() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    if (!video || !canvas || video.videoWidth === 0 || video.videoHeight === 0) {
+      setCameraError("Camera frame is not ready yet.");
+      return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      setCameraError("Cannot capture from camera.");
+      return;
+    }
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          setCameraError("Cannot capture from camera.");
+          return;
+        }
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        selectFile(new File([blob], `camera-capture-${timestamp}.jpg`, { type: "image/jpeg" }), "camera");
+        stopCamera();
+      },
+      "image/jpeg",
+      0.94,
+    );
   }
 
   async function processDocument() {
@@ -123,6 +216,7 @@ export function FinanceOcrDashboard() {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("preprocess", String(preprocess));
+    formData.append("preprocess_profile", preprocess ? preprocessProfile : "none");
 
     try {
       const response = await fetch("/api/ocr/finance", {
@@ -151,8 +245,10 @@ export function FinanceOcrDashboard() {
     setFile(null);
     setResult(null);
     setError(null);
+    setCameraError(null);
     setProgress(0);
     setSelectedBlockIndex(0);
+    stopCamera();
     if (inputRef.current) {
       inputRef.current.value = "";
     }
@@ -232,6 +328,51 @@ export function FinanceOcrDashboard() {
                 onChange={(event) => selectFile(event.target.files?.[0])}
               />
 
+              <div className="rounded-md border bg-card p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium">Camera capture</div>
+                    <div className="text-xs text-muted-foreground">Capture locally, then process when ready.</div>
+                  </div>
+                  {cameraStream ? (
+                    <Button type="button" variant="ghost" size="sm" onClick={stopCamera}>
+                      Close
+                    </Button>
+                  ) : (
+                    <Button type="button" variant="outline" size="sm" onClick={startCamera}>
+                      <Camera className="h-4 w-4" aria-hidden="true" />
+                      Open
+                    </Button>
+                  )}
+                </div>
+
+                {cameraStream ? (
+                  <div className="mt-3 space-y-3">
+                    <div className="overflow-hidden rounded-md border bg-muted">
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="aspect-[4/3] w-full bg-black object-cover"
+                      />
+                    </div>
+                    <Button type="button" className="w-full" onClick={captureCameraFrame}>
+                      <Camera className="h-4 w-4" aria-hidden="true" />
+                      Capture document
+                    </Button>
+                  </div>
+                ) : null}
+
+                {cameraError ? (
+                  <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                    {cameraError}
+                  </div>
+                ) : null}
+
+                <canvas ref={canvasRef} className="hidden" />
+              </div>
+
               {file ? (
                 <div className="rounded-md border bg-card p-3">
                   <div className="flex items-start justify-between gap-3">
@@ -255,6 +396,22 @@ export function FinanceOcrDashboard() {
                   className="h-4 w-4 rounded border-input accent-primary"
                 />
                 Use image preprocessing
+              </label>
+
+              <label className="grid gap-2 text-sm">
+                <span className="font-medium">Preprocessing profile</span>
+                <select
+                  value={preprocessProfile}
+                  disabled={!preprocess}
+                  onChange={(event) => setPreprocessProfile(event.target.value)}
+                  className="min-h-11 rounded-md border bg-card px-3 text-sm text-foreground shadow-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {preprocessProfiles.map((profile) => (
+                    <option key={profile.value} value={profile.value}>
+                      {profile.label}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               {isProcessing ? (
@@ -304,9 +461,52 @@ export function FinanceOcrDashboard() {
                     <CardHeader>
                       <CardDescription>Processing</CardDescription>
                       <CardTitle>{result.processing_time}s</CardTitle>
+                      <div className="pt-1 text-xs capitalize text-muted-foreground">
+                        {result.preprocess_profile} profile
+                      </div>
                     </CardHeader>
                   </Card>
                 </div>
+
+                {result.missing_fields.length || result.validation_errors.length ? (
+                  <div className="rounded-lg border border-accent/40 bg-accent/10 p-4">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent-foreground" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold">Needs review</div>
+                        {result.missing_fields.length ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {result.missing_fields.map((field) => (
+                              <Badge key={field} variant="warning" className="capitalize">
+                                Missing {field.replaceAll("_", " ")}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : null}
+                        {result.validation_errors.length ? (
+                          <ul className="mt-2 list-inside list-disc text-sm text-muted-foreground">
+                            {result.validation_errors.map((validationError) => (
+                              <li key={validationError}>{validationError}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {result.layout_evidence.length ? (
+                  <div className="rounded-lg border bg-card p-4">
+                    <div className="text-sm font-semibold">Recovered by layout</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {result.layout_evidence.map((item) => (
+                        <Badge key={`${item.field}-${item.value}`} variant="secondary" className="capitalize">
+                          {item.field.replaceAll("_", " ")}: {String(item.value)}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <Card>
                   <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

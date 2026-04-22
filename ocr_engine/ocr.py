@@ -6,7 +6,7 @@ import cv2
 import fitz
 import numpy as np
 from paddleocr import PaddleOCR
-from PIL import Image
+from PIL import Image, ImageOps
 
 from .document import Document, ExtractedField
 from .document_classifier import classifier
@@ -17,6 +17,8 @@ from .extractors import (
     ReimbursementExtractor,
     TaxInvoiceExtractor,
 )
+from .layout_extraction import enrich_finance_data
+from .preprocessing import apply_preprocessing, resolve_profile
 from .settings import AppSettings, settings
 from .text_processing import clean_ocr_text
 from .validators.finance import FinanceValidator
@@ -46,24 +48,35 @@ class OCREngine:
         self.reimbursement_extractor = ReimbursementExtractor()
         self.validator = FinanceValidator()
 
-    def extract_text(self, image_data: bytes, preprocess: bool | None = None) -> str:
+    def extract_text(
+        self,
+        image_data: bytes,
+        preprocess: bool | None = None,
+        preprocess_profile: str | None = None,
+    ) -> str:
         """Extract plain text."""
-        doc = self.extract_document(image_data, preprocess=preprocess)
+        doc = self.extract_document(
+            image_data,
+            preprocess=preprocess,
+            preprocess_profile=preprocess_profile,
+        )
         return doc.render_full_text()
 
     def extract_document(
         self,
         file_data: bytes,
         preprocess: bool | None = None,
+        preprocess_profile: str | None = None,
         is_pdf: bool = False,
     ) -> Document:
         """Extract a canonical document from image or PDF bytes."""
         try:
             should_preprocess = self.config.preprocess_enabled if preprocess is None else preprocess
+            profile = preprocess_profile or self.config.preprocess_profile
             if is_pdf:
-                doc = self._extract_from_pdf(file_data, should_preprocess)
+                doc = self._extract_from_pdf(file_data, should_preprocess, profile)
             else:
-                doc = self._extract_from_image(file_data, should_preprocess)
+                doc = self._extract_from_image(file_data, should_preprocess, profile)
 
             self._apply_finance_extraction(doc)
             return doc
@@ -71,26 +84,38 @@ class OCREngine:
             logger.error("Extraction error: %s", str(exc), exc_info=True)
             raise
 
-    def _extract_from_image(self, image_data: bytes, preprocess: bool) -> Document:
+    def _extract_from_image(
+        self,
+        image_data: bytes,
+        preprocess: bool,
+        preprocess_profile: str,
+    ) -> Document:
         image_np = self._decode_image(image_data)
         if preprocess:
-            image_np = self._preprocess_for_paddle(image_np)
+            image_np = apply_preprocessing(image_np, preprocess_profile, file_type="image")
 
         doc = Document()
         doc.page_count = 1
+        doc.metadata["preprocess_profile"] = resolve_profile(preprocess_profile, "image") if preprocess else "none"
         doc.add_blocks_from_ocr(self._extract_words(image_np, page=1), page=1)
         return doc
 
-    def _extract_from_pdf(self, pdf_data: bytes, preprocess: bool) -> Document:
+    def _extract_from_pdf(
+        self,
+        pdf_data: bytes,
+        preprocess: bool,
+        preprocess_profile: str,
+    ) -> Document:
         pdf_document = fitz.open(stream=pdf_data, filetype="pdf")
         doc = Document()
         doc.page_count = len(pdf_document)
+        doc.metadata["preprocess_profile"] = resolve_profile(preprocess_profile, "pdf") if preprocess else "none"
 
         try:
             for page_index in range(doc.page_count):
                 image_np = self._render_pdf_page(pdf_document[page_index])
                 if preprocess:
-                    image_np = self._preprocess_for_paddle(image_np)
+                    image_np = apply_preprocessing(image_np, preprocess_profile, file_type="pdf")
 
                 doc.add_blocks_from_ocr(
                     self._extract_words(image_np, page=page_index + 1),
@@ -152,7 +177,16 @@ class OCREngine:
             return
 
         extraction = extractor.extract(full_text)
+        layout_result = enrich_finance_data(classification.doc_type, extraction.data, doc.blocks)
+        extraction.data = layout_result["data"]
+        extraction.validation_errors = extractor.validate(extraction.data)
+        filled_fields = sum(1 for value in extraction.data.values() if value not in [None, "", [], 0])
+        extraction.confidence = round((filled_fields / len(extraction.data) * 100), 2) if extraction.data else 0.0
         doc.metadata["finance_data"] = extraction.data
+        doc.metadata["required_fields"] = layout_result["required_fields"]
+        doc.metadata["missing_fields"] = layout_result["missing_fields"]
+        doc.metadata["layout_evidence"] = layout_result["evidence"]
+        doc.metadata["validation_errors"] = extraction.validation_errors
 
         for key, value in extraction.data.items():
             if value and isinstance(value, (str, int, float)):
@@ -183,31 +217,13 @@ class OCREngine:
 
     @staticmethod
     def _decode_image(image_data: bytes) -> np.ndarray:
-        image = Image.open(io.BytesIO(image_data))
-        image_np = np.array(image)
+        image = ImageOps.exif_transpose(Image.open(io.BytesIO(image_data)))
+        image_np = np.array(image.convert("RGBA" if image.mode == "RGBA" else "RGB"))
 
         if len(image_np.shape) == 3 and image_np.shape[2] == 4:
-            return cv2.cvtColor(image_np, cv2.COLOR_RGBA2RGB)
+            return cv2.cvtColor(image_np, cv2.COLOR_RGBA2BGR)
 
-        return image_np
-
-    @staticmethod
-    def _preprocess_for_paddle(image_np: np.ndarray) -> np.ndarray:
-        if len(image_np.shape) == 3:
-            gray = cv2.cvtColor(image_np, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = image_np.copy()
-
-        denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
-        binary = cv2.adaptiveThreshold(
-            denoised,
-            255,
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY,
-            11,
-            2,
-        )
-        return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+        return cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
     @staticmethod
     def _result_to_dict(result: Any) -> dict[str, Any]:

@@ -145,6 +145,8 @@ The frontend is a simple internal review workspace built with:
 
 The browser calls Next.js API routes under `frontend/app/api/*`. Those routes proxy OCR requests to the FastAPI backend, so client-side code does not need to know the backend URL.
 
+The upload panel supports file upload, drag-and-drop, and live camera capture. Camera frames are captured locally in the browser as JPEG files and are only sent to the backend after the user clicks `Process OCR`.
+
 ```bat
 cd frontend
 set OCR_BACKEND_URL=http://localhost:8001
@@ -164,6 +166,7 @@ npm run dev -- --port 3001
 - `OCR_DEVICE` can override the inference device. Default is `cpu`.
 - `OCR_PDF_DPI` can override PDF rasterization DPI. Default is `150`.
 - `OCR_PREPROCESS=false` can disable image preprocessing by default.
+- `OCR_PREPROCESS_PROFILE` sets the default preprocessing profile: `auto`, `receipt`, `camera`, `clean`, or `none`.
 - `OCR_FINANCE_EXTRACTION=false` can disable finance classification and field extraction.
 
 ```bat

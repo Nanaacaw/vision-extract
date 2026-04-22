@@ -1,156 +1,82 @@
-"""
-Image preprocessing utilities optimized for PaddleOCR.
-"""
-
 import cv2
 import numpy as np
-from PIL import Image
-import io
+
+"""Geometry-preserving preprocessing profiles for PaddleOCR."""
+
+PreprocessProfile = str
+VALID_PROFILES = {"auto", "none", "clean", "receipt", "camera"}
 
 
-def preprocess_image(image: Image.Image) -> Image.Image:
-    """
-    Apply preprocessing optimized for PaddleOCR.
+def resolve_profile(profile: str | None, file_type: str) -> PreprocessProfile:
+    normalized = (profile or "auto").strip().lower()
+    if normalized not in VALID_PROFILES:
+        return "auto"
+    if normalized != "auto":
+        return normalized
+    return "clean" if file_type == "pdf" else "receipt"
 
-    Args:
-        image: PIL Image
 
-    Returns:
-        Preprocessed PIL Image
-    """
-    opencv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+def apply_preprocessing(
+    image_np: np.ndarray,
+    profile: str | None = "auto",
+    file_type: str = "image",
+) -> np.ndarray:
+    """Apply a profile without changing image dimensions, so OCR boxes stay aligned."""
+    resolved = resolve_profile(profile, file_type)
+    if resolved == "none":
+        return image_np
+    if resolved == "clean":
+        return _clean_scan(image_np)
+    if resolved == "camera":
+        return _camera_photo(image_np)
+    return _receipt(image_np)
 
-    gray = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
 
-    # Denoise
-    denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
+def _to_gray(image_np: np.ndarray) -> np.ndarray:
+    if len(image_np.shape) == 2:
+        return image_np.copy()
+    return cv2.cvtColor(image_np, cv2.COLOR_BGR2GRAY)
 
-    # Adaptive thresholding for better contrast
+
+def _to_bgr(gray: np.ndarray) -> np.ndarray:
+    return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+
+def _clahe(gray: np.ndarray, clip_limit: float = 2.0) -> np.ndarray:
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
+    return clahe.apply(gray)
+
+
+def _sharpen(gray: np.ndarray) -> np.ndarray:
+    blur = cv2.GaussianBlur(gray, (0, 0), 1.0)
+    return cv2.addWeighted(gray, 1.45, blur, -0.45, 0)
+
+
+def _clean_scan(image_np: np.ndarray) -> np.ndarray:
+    gray = _to_gray(image_np)
+    enhanced = _clahe(gray, clip_limit=1.6)
+    return _to_bgr(enhanced)
+
+
+def _receipt(image_np: np.ndarray) -> np.ndarray:
+    gray = _to_gray(image_np)
+    denoised = cv2.fastNlMeansDenoising(gray, None, 7, 7, 21)
+    enhanced = _clahe(denoised, clip_limit=2.2)
+    sharpened = _sharpen(enhanced)
+    return _to_bgr(sharpened)
+
+
+def _camera_photo(image_np: np.ndarray) -> np.ndarray:
+    gray = _to_gray(image_np)
+    denoised = cv2.fastNlMeansDenoising(gray, None, 9, 7, 21)
+    enhanced = _clahe(denoised, clip_limit=2.6)
+    sharpened = _sharpen(enhanced)
     binary = cv2.adaptiveThreshold(
-        denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+        sharpened,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        17,
+        4,
     )
-
-    # Convert back to 3-channel for PaddleOCR
-    result = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
-
-    return Image.fromarray(result)
-
-
-def denoise_image(image: Image.Image) -> Image.Image:
-    """
-    Remove noise from image.
-
-    Args:
-        image: PIL Image
-
-    Returns:
-        Denoised PIL Image
-    """
-    opencv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-    gray = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
-
-    denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
-
-    return Image.fromarray(denoised)
-
-
-def resize_image(image: Image.Image, scale_factor: float = 2.0) -> Image.Image:
-    """
-    Resize image for better OCR on small text.
-
-    Args:
-        image: PIL Image
-        scale_factor: Factor to scale the image
-
-    Returns:
-        Resized PIL Image
-    """
-    width = int(image.width * scale_factor)
-    height = int(image.height * scale_factor)
-
-    resized = image.resize((width, height), Image.LANCZOS)
-    return resized
-
-
-def enhance_contrast(image: Image.Image) -> Image.Image:
-    """
-    Enhance image contrast for better text recognition.
-
-    Args:
-        image: PIL Image
-
-    Returns:
-        Contrast-enhanced PIL Image
-    """
-    opencv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-    gray = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
-
-    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    enhanced = clahe.apply(gray)
-
-    # Convert to 3-channel
-    enhanced_3ch = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
-
-    return Image.fromarray(enhanced_3ch)
-
-
-def deskew_image(image: Image.Image) -> Image.Image:
-    """
-    Deskew/rotate image to straighten text.
-
-    Args:
-        image: PIL Image
-
-    Returns:
-        Deskewed PIL Image
-    """
-    opencv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-    gray = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
-    gray = cv2.bitwise_not(gray)
-
-    # Detect angle
-    coords = np.column_stack(np.where(gray > 0))
-    if len(coords) > 0:
-        angle = cv2.minAreaRect(coords)[-1]
-        if angle < -45:
-            angle = -(90 + angle)
-        else:
-            angle = -angle
-
-        # Rotate
-        (h, w) = opencv_image.shape[:2]
-        center = (w // 2, h // 2)
-        M = cv2.getRotationMatrix2D(center, angle, 1.0)
-        rotated = cv2.warpAffine(opencv_image, M, (w, h),
-                                 flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
-
-        return Image.fromarray(cv2.cvtColor(rotated, cv2.COLOR_BGR2RGB))
-
-    return image
-
-
-def remove_background(image: Image.Image) -> Image.Image:
-    """
-    Remove background noise for cleaner text extraction.
-
-    Args:
-        image: PIL Image
-
-    Returns:
-        PIL Image with reduced background noise
-    """
-    opencv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-    gray = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
-
-    # Morphological opening to remove small objects
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    opening = cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel, iterations=2)
-
-    # Dilate to strengthen text
-    dilated = cv2.dilate(opening, kernel, iterations=1)
-
-    # Convert to 3-channel
-    result = cv2.cvtColor(dilated, cv2.COLOR_GRAY2BGR)
-
-    return Image.fromarray(result)
+    return _to_bgr(binary)

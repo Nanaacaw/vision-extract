@@ -11,9 +11,11 @@ The OCR path is intentionally simple: this project uses PaddleOCR PP-OCRv5 mobil
 | `OCR_TEXTLINE_ORIENTATION` | `false` |
 | `OCR_DOC_ORIENTATION_CLASSIFY` | `false` |
 | `OCR_DOC_UNWARPING` | `false` |
+| `OCR_RETURN_WORD_BOX` | `true` |
 | `OCR_DEVICE` | `cpu` |
 | `OCR_PDF_DPI` | `150` |
 | `OCR_PREPROCESS` | `true` |
+| `OCR_PREPROCESS_PROFILE` | `auto` |
 | `OCR_FINANCE_EXTRACTION` | `true` |
 
 All runtime settings are centralized in `ocr_engine/settings.py`.
@@ -27,11 +29,72 @@ PaddleOCR(
     use_doc_orientation_classify=False,
     use_doc_unwarping=False,
     use_textline_orientation=False,
+    return_word_box=True,
     device="cpu",
 )
 ```
 
 OCR execution uses `predict(input=image_np)`. The result is normalized from `rec_texts`, `rec_scores`, and OCR box fields into this project's canonical `Document` blocks.
+
+## Camera Capture
+
+The frontend can capture documents directly from the browser camera. The captured frame is converted to a local JPEG `File`, then sent through the same upload path as normal images.
+
+Important constraints:
+
+- camera access works on `localhost` or HTTPS, not arbitrary insecure HTTP origins
+- capture quality depends heavily on focus, lighting, distance, and paper angle
+- the backend still receives a normal image upload, so no special camera endpoint is required
+- users should review block and word confidence after capture because camera photos are usually less stable than scanned files
+
+## Word-Level Accuracy Tuning
+
+For better extraction of every word, tune the pipeline in this order:
+
+1. Improve capture quality before changing models:
+   - use rear camera where available
+   - keep the receipt flat and fully inside frame
+   - avoid shadows, glare, blur, and strong perspective
+   - capture at high resolution, then let preprocessing simplify the image
+2. Keep `OCR_RETURN_WORD_BOX=true` so PaddleOCR returns native word boxes when available.
+3. Evaluate preprocessing variants per sample set:
+   - current denoise + adaptive threshold
+   - grayscale only for clean printed invoices
+   - contrast/sharpen for faded thermal receipts
+   - no thresholding for screenshots or already-clean scans
+4. Enable optional orientation/unwarping only if the dataset needs it:
+   - `OCR_TEXTLINE_ORIENTATION=true` for rotated text lines
+   - `OCR_DOC_ORIENTATION_CLASSIFY=true` for sideways pages
+   - `OCR_DOC_UNWARPING=true` for curved/warped camera photos
+5. Raise PDF rasterization when PDFs are blurry:
+   - try `OCR_PDF_DPI=200` or `OCR_PDF_DPI=300`
+   - expect slower processing and higher memory use
+6. Compare recognition models on the same Indonesian finance sample set:
+   - current `PP-OCRv5_mobile_rec`
+   - `latin_PP-OCRv5_mobile_rec` for Latin-script-heavy Indonesian documents
+7. Add post-OCR correction rules for finance text:
+   - `O` vs `0`
+   - `I/l` vs `1`
+   - common bank/account/reference labels
+   - Indonesian amount and date formats
+
+The biggest practical gain will usually come from capture quality, preprocessing profiles, and layout-aware extraction using bounding boxes. Changing the model should come after measuring field-level accuracy on real invoices, receipts, payment slips, and tax documents.
+
+The backend also runs a layout-aware fallback for `receipt` and `payment_slip` documents. It uses OCR block positions to recover missing values such as totals, dates, transaction IDs, payment amounts, and currencies when regex extraction over full text misses them. The API exposes recovered values in `layout_evidence` and any remaining required gaps in `missing_fields`.
+
+## Preprocessing Profiles
+
+Preprocessing is configured globally with `OCR_PREPROCESS_PROFILE`, but each OCR request can override it with `preprocess_profile`.
+
+| Profile | Use case | Behavior |
+| --- | --- | --- |
+| `auto` | Default | Uses `clean` for PDFs and `receipt` for images. |
+| `clean` | Clean PDF or scanned invoice | Light contrast normalization without thresholding. |
+| `receipt` | Printed or thermal receipt | Denoise, local contrast enhancement, and mild sharpening. |
+| `camera` | Camera capture | Stronger contrast, denoise, sharpening, and adaptive thresholding. |
+| `none` | Screenshot or already-clean image | Sends the decoded image directly to PaddleOCR. |
+
+All profiles preserve image dimensions so OCR bounding boxes remain aligned with the frontend document preview.
 
 ## Indonesian Finance Documents
 

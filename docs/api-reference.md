@@ -47,6 +47,7 @@ Form fields:
 | --- | --- | --- | --- |
 | `file` | file | yes | Image or PDF document. Supported: `png`, `jpg`, `jpeg`, `bmp`, `tiff`, `tif`, `webp`, `pdf`. |
 | `preprocess` | boolean | no | Overrides default image preprocessing for this request. |
+| `preprocess_profile` | string | no | Per-request preprocessing profile: `auto`, `receipt`, `camera`, `clean`, or `none`. |
 
 Example curl:
 
@@ -64,6 +65,11 @@ Response fields:
 | `doc_type` | string | Classified finance document type. |
 | `classification_confidence` | number | Classifier confidence score. |
 | `page_count` | number | Number of processed pages. |
+| `preprocess_profile` | string | Profile actually used by the OCR engine. |
+| `required_fields` | array | Required fields for the detected finance document type. |
+| `missing_fields` | array | Required fields still missing after normal and layout-aware extraction. |
+| `layout_evidence` | array | Fields recovered by layout-aware fallback extraction. |
+| `validation_errors` | array | Field validation errors that should be reviewed. |
 | `json` | object | Canonical document rendering. |
 | `full_text` | string | Cleaned OCR text suitable for reading/extraction. |
 | `markdown` | string | Markdown rendering of the canonical document. |

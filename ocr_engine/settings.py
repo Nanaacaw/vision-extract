@@ -36,6 +36,13 @@ def env_int(name: str, default: int) -> int:
     return int(value.strip())
 
 
+def env_str(name: str, default: str) -> str:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip()
+
+
 @dataclass(frozen=True)
 class AppSettings:
     backend_port: int = env_int("OCR_BACKEND_PORT", 8001)
@@ -48,6 +55,7 @@ class AppSettings:
     ocr_return_word_box: bool = env_bool("OCR_RETURN_WORD_BOX", True)
     pdf_dpi: int = env_int("OCR_PDF_DPI", 150)
     preprocess_enabled: bool = env_bool("OCR_PREPROCESS", True)
+    preprocess_profile: str = env_str("OCR_PREPROCESS_PROFILE", "auto")
     finance_extraction_enabled: bool = env_bool("OCR_FINANCE_EXTRACTION", True)
 
 

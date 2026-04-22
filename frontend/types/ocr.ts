@@ -52,11 +52,22 @@ export type OcrReviewItem = {
   words: OcrWord[];
 };
 
+export type LayoutEvidence = {
+  field: string;
+  value: string | number;
+  source: string;
+};
+
 export type OcrResponse = {
   success: boolean;
   doc_type: string;
   classification_confidence: number;
   page_count: number;
+  preprocess_profile: string;
+  required_fields: string[];
+  missing_fields: string[];
+  layout_evidence: LayoutEvidence[];
+  validation_errors: string[];
   full_text: string;
   markdown: string;
   fields: OcrField[];
@@ -76,5 +87,6 @@ export type HealthResponse = {
   ocr_return_word_box: boolean;
   pdf_dpi: number;
   preprocess_enabled: boolean;
+  preprocess_profile: string;
   finance_extraction_enabled: boolean;
 };
